@@ -1,0 +1,12 @@
+# Real credentials — never committed. Copy supabase-config.example.js
+# to supabase-config.js and fill in your own project's values.
+supabase-config.js
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor noise
+*.swp
+.idea/
+.vscode/
