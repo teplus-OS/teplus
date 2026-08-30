@@ -18,19 +18,31 @@ The fastest way to set up Teplus is to let an AI assistant do it:
 
 You'll need: a Supabase account (free tier is fine) and about 20 minutes.
 
+## Try it first (demo mode)
+
+Open `app/index.html` in a browser with no configuration at all and Teplus
+runs in demo mode with sample people, touches, and tasks, so you can see the
+whole UI before creating anything.
+
 ## Manual setup
 
 1. Create a Supabase project at supabase.com.
-2. In the SQL editor, run `schema.sql` in full. This creates every table AND
-   the Row Level Security policies — do not skip it or run it partially.
-3. In Authentication settings, disable public signups (you are the only
-   user) and enable leaked password protection.
-4. Copy `supabase-config.example.js` to `supabase-config.js` and fill in your
-   project URL and anon key (Project Settings → API).
-5. Open `index.html`. Create your account, sign in, add your first contacts.
+2. In the SQL editor, run `supabase/schema.sql` in full. This creates every
+   table AND the Row Level Security policies — do not skip it or run it
+   partially. (The security model is documented at the top of that file.)
+3. In Authentication settings, disable public signups (each deployment is
+   personal — you are the only user) and enable leaked password protection.
+4. Create your account: Authentication → Add user (email + password).
+5. Copy `app/supabase-config.example.js` to `app/supabase-config.js` and fill
+   in your project URL and publishable key (Project Settings → API). The real
+   config file is gitignored so your values stay local.
+6. Serve the `app/` folder (any static host, or locally e.g.
+   `python3 -m http.server` from `app/`) and sign in.
 
-<!-- TODO before publish: verify these steps against the real deploy test;
-     add hosting note (static host vs local file) once decided. -->
+Optional: deploying on Vercel picks up `app/vercel.json` (security headers).
+Optional: the calendar widget needs the `calendar-feed` edge function
+deployed (`supabase functions deploy calendar-feed`) and your calendar's
+secret ICS URL saved in Settings.
 
 ## Customizing (the fun part)
 
@@ -38,6 +50,14 @@ Teplus is a single HTML file. That means you can change it with a prompt:
 open the file in a Claude conversation and describe what you want — a new
 field, a different cadence, a view your workflow needs. This is a supported,
 intended way to use it.
+
+## Signals (optional, bring your own)
+
+The Companies tab and the Home live feed read from two tables
+(`tracked_companies` and `company_events`) that ship empty. Teplus includes
+no data collector; if you have your own process that finds company news,
+write rows into those tables and the app picks them up. Everything else
+works fully without them.
 
 ## Your data and privacy
 

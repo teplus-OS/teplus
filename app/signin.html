@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="color-scheme" content="light only"/><title>Sign in — Teplus</title>
+<!-- [first-party] v1.13 S1 — brand swap: same rounded-square r+dot favicon as
+     index.html (verbatim data-URI), replacing the old radar-circles mark. -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23FAFAF9'/%3E%3Cpath d='M34 26 L34 78' fill='none' stroke='%230A0A0A' stroke-width='15' stroke-linecap='round'/%3E%3Cpath d='M34 42 C34 25 51 20 62 26' fill='none' stroke='%230A0A0A' stroke-width='15' stroke-linecap='round'/%3E%3Crect x='68' y='54' width='16' height='24' rx='6' fill='%23F4551F'/%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* Teplus sign-in — self-contained port of the the signal engine auth tokens/styles. */
+:root{color-scheme:light}
+html{color-scheme:light only;background:#FAFAF9}
+html,body{background:#FAFAF9 !important}
+:root{
+  --paper:#FAFAF9;--paper-raised:#FFFFFF;--paper-sunk:#F4F4F2;
+  --ink:#0A0A0A;--ink-2:#1D1D1F;--ink-3:#424245;--ink-4:#515154;--ink-5:#6E6E73;--ink-6:#86868B;--ink-7:#A1A1A6;
+  --edge:#E5E5E3;
+  --pulse:#30A46C;
+  --ff:'Inter',-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;
+  --ease:cubic-bezier(0.2,0.8,0.2,1);--ease-soft:cubic-bezier(0.4,0,0.2,1);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--ff);font-size:15px;line-height:1.5;color:var(--ink-2);background:var(--paper);-webkit-font-smoothing:antialiased;letter-spacing:-0.005em;min-height:100vh}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font:inherit}
+::selection{background:var(--ink);color:var(--paper-raised)}
+.topbar{position:sticky;top:0;z-index:50;background:rgba(250,250,249,0.88);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:0.5px solid var(--edge)}
+.topbar-grid{max-width:1280px;margin:0 auto;padding:14px clamp(20px,4vw,48px);display:flex;align-items:center;gap:24px}
+.logo{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:500;letter-spacing:-0.02em;color:var(--ink)}
+.logo-mark{width:18px;height:18px;flex-shrink:0}
+.logo-mark svg{width:100%;height:100%;display:block}
+.topbar-spacer{flex:1}
+.topbar-link{font-size:13px;color:var(--ink-5);transition:color .25s var(--ease-soft)}
+.topbar-link:hover{color:var(--ink)}
+.h1{font-size:clamp(2rem,4.4vw,2.8rem);font-weight:400;letter-spacing:-0.035em;line-height:1.05;color:var(--ink)}
+.lede{margin-top:12px;color:var(--ink-4);font-size:16px;line-height:1.55;max-width:54ch}
+.field{margin-top:20px}
+.field label{display:block;font-size:12px;font-weight:500;color:var(--ink-3);margin-bottom:8px}
+.field .hint,.hint{font-size:12px;color:var(--ink-5);margin-top:6px}
+.input{width:100%;font-size:15px;padding:12px 14px;background:var(--paper-raised);border:0.5px solid var(--edge);border-radius:10px;color:var(--ink);transition:border-color .2s,box-shadow .2s;font-family:var(--ff);letter-spacing:-0.005em}
+.input::placeholder{color:var(--ink-6)}
+.input:focus{outline:none;border-color:var(--ink-3);box-shadow:0 0 0 3px rgba(10,10,10,0.04)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:500;padding:11px 20px;border-radius:999px;transition:all .25s var(--ease-soft);white-space:nowrap}
+.btn-primary{background:var(--ink);color:var(--paper-raised)}
+.btn-primary:hover{background:var(--ink-2);transform:translateY(-1px)}
+.btn-primary:disabled{background:var(--ink-7);cursor:not-allowed;transform:none}
+.btn-block{display:flex;width:100%}
+.footer-min{max-width:880px;margin:0 auto;padding:32px clamp(20px,4vw,32px);border-top:0.5px solid var(--edge);font-size:12px;color:var(--ink-5);display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.footer-min .spacer{flex:1}
+.page{max-width:420px;margin:0 auto;padding-top:clamp(80px,12vh,140px);padding-left:clamp(20px,4vw,32px);padding-right:clamp(20px,4vw,32px)}
+#signInForm{margin-top:28px}
+</style></head><body>
+<header class="topbar"><div class="topbar-grid">
+<!-- [first-party] v1.13 S1 — brand swap: the topbar's r+dot mark (verbatim
+     from index.html), replacing the old radar-circles svg. stroke uses
+     currentColor; .logo already sets color:var(--ink) above. Wordmark text
+     goes lowercase to match. -->
+<a href="index.html" class="logo"><span class="logo-mark"><svg viewBox="0 0 100 100" fill="none"><path d="M34 26 L34 78" stroke="currentColor" stroke-width="15" stroke-linecap="round"/><path d="M34 42 C34 25 51 20 62 26" stroke="currentColor" stroke-width="15" stroke-linecap="round"/><rect x="68" y="54" width="16" height="24" rx="6" fill="#F4551F"/></svg></span>teplus</a>
+<div class="topbar-spacer"></div><span class="topbar-link">Your personal CRM</span></div></header>
+
+<main class="page">
+<h1 class="h1">Welcome back.</h1>
+<p class="lede">Sign in to Teplus.</p>
+<form id="signInForm">
+<div class="field"><label for="email">Email</label><input class="input" id="email" type="email" placeholder="you@email.com" autocomplete="username" required autofocus/></div>
+<div class="field"><label for="password">Password</label><input class="input" id="password" type="password" placeholder="••••••••" autocomplete="current-password" required/></div>
+<button type="submit" id="signInBtn" class="btn btn-primary btn-block" style="margin-top:24px">Sign in</button>
+<p id="signInError" style="margin-top:14px;font-size:13px;color:#B02A2A;display:none"></p>
+<p class="hint" style="margin-top:16px">Single-user system. Locked to the owner.</p>
+</form>
+<div id="demoNote" style="display:none;margin-top:8px">
+  <div class="field" style="padding:18px 20px;background:var(--paper-sunk);border:0.5px solid var(--edge);border-radius:12px">
+    <div style="font-weight:500;color:var(--ink);margin-bottom:6px">Demo mode.</div>
+    <div style="font-size:13px;color:var(--ink-3);line-height:1.5">Supabase isn't configured yet, so there's nothing to sign in to. <a href="index.html" style="color:var(--pulse);text-decoration:underline;text-underline-offset:2px">Open the CRM with sample data →</a></div>
+  </div>
+</div>
+</main>
+<!-- [first-party] v1.13 S1 — brand swap: footer credit line matches
+     index.html's "teplus · Built by Ricky" wording. -->
+<footer class="footer-min"><span>© 2026 teplus · Built by Ricky</span><span class="spacer"></span><span>Single-user personal CRM</span></footer>
+<!-- [first-party] v1.13 S1 — vendored @supabase/supabase-js@2.45.4 (UMD
+     build, from the npm tarball) instead of the third-party CDN script tag
+     this used to be, same as index.html (v1.7): kills a third-party CDN
+     dependency (availability + supply-chain). 591.supabase.js is its lazy
+     webpack chunk, fetched by the UMD bundle relative to this script's own
+     URL, so both files must stay next to each other under vendor/ —
+     signin.html sits beside index.html, so the same vendor/ directory
+     resolves identically.
+     window.supabase.createClient is otherwise unchanged. -->
+<script src="vendor/supabase.js"></script>
+<script src="supabase-config.js"></script>
+<script>
+(async function () {
+  // If already signed in, skip the form and bounce to the app.
+  const client = window.supabaseClient;
+  if (client) {
+    const { data } = await client.auth.getSession();
+    if (data && data.session) {
+      window.location.replace('index.html');
+      return;
+    }
+  }
+
+  const form = document.getElementById('signInForm');
+  const errorEl = document.getElementById('signInError');
+  const btn = document.getElementById('signInBtn');
+
+  // No client (blank or placeholder config) → nothing to sign in to; point at demo mode.
+  if (!client) {
+    form.style.display = 'none';
+    document.getElementById('demoNote').style.display = 'block';
+    return;
+  }
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    errorEl.style.display = 'none';
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    if (!email || !password) return;
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    const { error } = await client.auth.signInWithPassword({ email: email, password: password });
+    if (error) {
+      errorEl.textContent = error.message || 'Could not sign in. Check your email and password.';
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Sign in';
+      return;
+    }
+    window.location.replace('index.html');
+  });
+})();
+</script>
+</body></html>
