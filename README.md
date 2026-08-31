@@ -18,6 +18,10 @@ The fastest way to set up Teplus is to let an AI assistant do it:
 
 You'll need: a Supabase account (free tier is fine) and about 20 minutes.
 
+If you're the AI doing the deploying: read `docs/WHAT-GETS-SET-UP.md` first —
+it maps every piece with a one-liner on what it does and why it matters, so
+you can explain each step before the user takes it.
+
 ## Try it first (demo mode)
 
 Open `app/index.html` in a browser with no configuration at all and Teplus
