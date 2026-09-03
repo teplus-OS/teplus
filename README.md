@@ -14,9 +14,10 @@ The fastest way to set up Teplus is to let an AI assistant do it:
 1. Open a new conversation with Claude.
 2. Paste this repository's link and say: **"Deploy this for me."**
 3. Claude will walk you through creating a free Supabase project, running the
-   schema, and getting the app on your screen.
+   schema, deploying the app to Vercel, and signing in at your own URL.
 
-You'll need: a Supabase account (free tier is fine) and about 20 minutes.
+You'll need: a Supabase account and a Vercel account (both free tiers are
+fine) and about 20 minutes.
 
 If you're the AI doing the deploying: read `docs/WHAT-GETS-SET-UP.md` first —
 it maps every piece with a one-liner on what it does and why it matters, so
@@ -40,10 +41,16 @@ whole UI before creating anything.
 5. Copy `app/supabase-config.example.js` to `app/supabase-config.js` and fill
    in your project URL and publishable key (Project Settings → API). The real
    config file is gitignored so your values stay local.
-6. Serve the `app/` folder (any static host, or locally e.g.
-   `python3 -m http.server` from `app/`) and sign in.
+6. Deploy the `app/` folder to Vercel (free Hobby tier): import this repo
+   at vercel.com, set the project's root directory to `app`, and add
+   `supabase-config.js` there before deploying (it is gitignored, so it
+   must be added to the deployment, for example as a file in the `app/`
+   folder of your own fork or via a build step). Vercel picks up
+   `app/vercel.json` for the security headers and gives you a URL to
+   bookmark. Any other static host works too, and for a quick local look
+   you can run `python3 -m http.server` from `app/`.
+7. Open your URL and sign in.
 
-Optional: deploying on Vercel picks up `app/vercel.json` (security headers).
 Optional: the calendar widget needs the `calendar-feed` edge function
 deployed (`supabase functions deploy calendar-feed`) and your calendar's
 secret ICS URL saved in Settings.
