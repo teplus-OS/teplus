@@ -55,6 +55,9 @@ on the same day.
 
 Time: 30 to 60 minutes of your decisions.
 
+The setup guide's first prompt loads everyone and archives the ones you
+cut, so a dropped contact still shows up under a company you cover.
+
 ## Your companies
 
 The Companies tab shows updates on the companies you cover, the people you
@@ -97,9 +100,14 @@ No matching event in its window means no flag.
 
 ### Limits on the free plan
 
-Keep it to a few hundred companies. Checks run in batches every 15
-minutes. Open Teplus at least weekly so your project doesn't pause. The
-SEC requires your email in requests, so coverage asks for it.
+About 300 companies is comfortable on the free plan. Checks run in
+batches of 8 every 15 minutes, so each company refreshes a few times a
+day. The collector checks 8 companies every 15 minutes, 768 a day, so
+200 companies refresh about every 6 hours and 500 about every 16.
+
+If you skipped company coverage, open Teplus at least once a week so the
+free project stays awake. The SEC requires your email in requests, so
+coverage asks for it.
 
 ### Keep-alive
 
@@ -118,6 +126,19 @@ can go into the next version.
 To update, tell your AI: "update my Teplus to the latest version from the
 repo." Your data is untouched.
 
+## If your AI can read your email
+
+Connected Gmail or Outlook to Claude or ChatGPT? Then one prompt a week
+keeps Teplus current. It works because Teplus is a plain database your AI
+can write to.
+
+> Read my sent mail since last Monday. For each person I actually wrote
+> to who is in my Teplus, log a touch with the date and a one line
+> summary. Show me the list before you write anything.
+
+First time, use a longer window to backfill history. Needs an assistant
+with email access and access to your Teplus database.
+
 ## Your data and privacy
 
 Teplus is self hosted. You are the data controller for what you put in it.
@@ -132,4 +153,4 @@ no scoring or prediction in this repository.
 
 ---
 
-Built by Ricky. Questions: r@agran.co
+Built by Ricky Agran. Questions: r@agran.co
