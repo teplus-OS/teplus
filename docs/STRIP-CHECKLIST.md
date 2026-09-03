@@ -47,9 +47,17 @@ contacts xlsx and any secret can never ride along by accident.
 - [x] git history clean (fresh init, scaffold + strip commits only)
 - [ ] Naive-user deploy test: fresh Claude conversation, paste repo link,
       "deploy this for me", end to end (Ricky runs this)
-- [ ] On Ricky: PAT revoked, OBA decision noted (deferred until monetization
-      — Ricky's call 2026-08-29), buy teplus.ai (Vercel showed it AVAILABLE
-      at $160/2yr on 2026-08-30 — not yet purchased)
+- [ ] Docs match check (after the smoke test AND the naive-user test, before
+      the design-partner email): (a) setup guide reflects what actually
+      happened in the naive-user run — prompt URL github.com/teplus-OS/teplus,
+      Vercel path, LinkedIn export steps, the three onboarding prompts;
+      (b) README says the same thing in the same order (Supabase → schema →
+      auth user → config → Vercel → sign in); (c) guide, README and
+      WHAT-GETS-SET-UP.md agree on prerequisites and optional pieces. Fix
+      whichever is wrong, re-export the guide PDF.
+- [ ] On Ricky: the two PATs burned in 09-02 transcripts revoked; OBA decision
+      noted (deferred until monetization — Ricky's call 2026-08-29). Domain is
+      teplus.io (owned); teplus.ai is NOT wanted.
 
 ## Deliberately skipped (decided 2026-08-28)
 - inline onclick cleanup
