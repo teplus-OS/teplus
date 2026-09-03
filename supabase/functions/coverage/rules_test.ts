@@ -6,7 +6,13 @@
 // window edges (just inside / just outside).
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { classify8kItems, classifyJobTitle, classifyNewsTitle, computeReachOut } from "./rules.ts";
+import {
+  classify8kItems,
+  classifyJobTitle,
+  classifyNewsTitle,
+  computeReachOut,
+  parseFundraiseFromTitle,
+} from "./rules.ts";
 
 // ───────────────────────── classifyJobTitle ─────────────────────────
 
@@ -97,6 +103,29 @@ Deno.test("classifyNewsTitle: fallback news", () => {
 Deno.test("classifyNewsTitle: fundraise verb without amount doesn't match", () => {
   // "raises" alone (no $/million/billion/Series/seed) should not be news_fundraise.
   assertEquals(classifyNewsTitle("Acme raises concerns about market"), "news");
+});
+
+Deno.test("classifyNewsTitle: earnings/results headlines are not fundraises", () => {
+  assertEquals(
+    classifyNewsTitle(
+      "Snowflake: Q2 Fiscal 2027 Revenue Rises 35% To $1.55 Billion As Product Revenue Guidance Is Raised",
+    ),
+    "news",
+  );
+});
+
+Deno.test("classifyNewsTitle + parseFundraiseFromTitle: Series B raise", () => {
+  const title = "Acme raises $40M Series B led by Foo";
+  assertEquals(classifyNewsTitle(title), "news_fundraise");
+  assertEquals(parseFundraiseFromTitle(title), { round: "Series B", amount: 40_000_000 });
+});
+
+Deno.test("classifyNewsTitle: stock rises after earnings is not a fundraise", () => {
+  assertEquals(classifyNewsTitle("Acme stock rises after earnings beat"), "news");
+});
+
+Deno.test("classifyNewsTitle: seed funding language matches", () => {
+  assertEquals(classifyNewsTitle("Acme secures $12 million in seed funding"), "news_fundraise");
 });
 
 // ───────────────────────── classify8kItems ─────────────────────────
@@ -230,7 +259,7 @@ Deno.test("computeReachOut: 8_k_leadership_change without parseable role falls b
     NOW,
   );
   assertEquals(result.reach_out, true);
-  assertEquals(result.why_now, "New leadership change 12 days ago");
+  assertEquals(result.why_now, "Leadership change reported 12 days ago");
 });
 
 Deno.test("computeReachOut: senior_arrival with role", () => {
@@ -248,7 +277,7 @@ Deno.test("computeReachOut: exec_departure with role", () => {
     NOW,
   );
   assertEquals(result.reach_out, true);
-  assertEquals(result.why_now, "CFO departed 3 days ago");
+  assertEquals(result.why_now, "CFO departure reported 3 days ago");
 });
 
 Deno.test("computeReachOut: exec_departure without parseable role falls back", () => {
@@ -257,7 +286,7 @@ Deno.test("computeReachOut: exec_departure without parseable role falls back", (
     NOW,
   );
   assertEquals(result.reach_out, true);
-  assertEquals(result.why_now, "Leadership change 3 days ago");
+  assertEquals(result.why_now, "Leadership departure reported 3 days ago");
 });
 
 Deno.test("computeReachOut: 45-day window just inside (44 days)", () => {

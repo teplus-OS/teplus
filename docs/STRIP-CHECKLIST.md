@@ -72,3 +72,14 @@ contacts xlsx and any secret can never ride along by accident.
 - [x] supabase/coverage-schedule.sql
 - [x] docs/SPEC-companies.md
 - [x] Capital score removed from app, schema, demo data, docs (grep clean 2026-09-03; only the migration's drop-column lines and the SPEC mention it)
+- [x] Live smoke on a fresh free project 2026-09-03: schema, auth, RLS, collector on cron, Vercel, add company, end to end
+
+### Learned in the smoke test
+- Vercel turns on Deployment Protection by default on the Hobby plan; the site redirects to a Vercel login until it's switched off at Settings → Deployment Protection → Vercel Authentication.
+- Vercel blocks deploys made from inside a git folder whose last commit email isn't the account's; deploy from a copy outside the repo instead (setup.sh does this).
+- Supabase leaked password protection is Pro only; set minimum password length to 12 under Authentication → Sign In / Providers → Email on the free plan instead.
+- The SEC form filter breaks on slashes in form types.
+- Entity matching must strip the `(TICKER)` suffix before comparing company names.
+- A company's first coverage check is a baseline, not a flagged event.
+- News matching needs a whole-word match plus an earnings exclusion, or it over-fires.
+- The config placeholder check must be shape-based (does it look like a real key), not a literal string match.

@@ -16,7 +16,13 @@
 // by the platform), COVERAGE_SECRET (set with `supabase secrets set`).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { classify8kItems, classifyJobTitle, classifyNewsTitle, computeReachOut } from "./rules.ts";
+import {
+  classify8kItems,
+  classifyJobTitle,
+  classifyNewsTitle,
+  computeReachOut,
+  parseFundraiseFromTitle,
+} from "./rules.ts";
 
 // ───────────────────────── constants ─────────────────────────
 
@@ -101,7 +107,7 @@ async function edgarFetch(url: string, contactEmail: string): Promise<Response |
 function normalizeForMatch(name: string): string {
   return name
     .toLowerCase()
-    .replace(/\(cik\s*\d+\)/g, "")                       // efts appends "(CIK 0001234)"
+    .replace(/\([^)]*\)/g, " ")                            // efts appends "(TICKER)" and "(CIK 0001234)"
     .replace(/\b(inc|incorporated|llc|l\.l\.c|corp|corporation|ltd|limited|co|company|pbc|plc|holdings|group|technologies|labs)\b\.?/g, "")
     .replace(/[.,'"()]/g, "")
     .replace(/\s+/g, " ")
@@ -205,7 +211,7 @@ async function collectEdgar(
   const since = company.checked_at ? new Date(new Date(company.checked_at).getTime() - 86400000) : daysAgo(now, 90);
   const url =
     `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(`"${company.name}"`)}` +
-    `&forms=D,D%2FA,8-K,S-1,S-1%2FA&dateRange=custom&startdt=${todayStr(since)}&enddt=${todayStr(now)}`;
+    `&forms=D,8-K,S-1&dateRange=custom&startdt=${todayStr(since)}&enddt=${todayStr(now)}`;
 
   const resp = await edgarFetch(url, contactEmail);
   if (!resp || !resp.ok) return;
@@ -267,7 +273,7 @@ async function collectEdgar(
         occurred_at: occurredAt,
         external_id: accession,
       });
-    } else if (form === "8-K") {
+    } else if (form === "8-K" || form === "8-K/A") {
       const { subtype, title } = classify8kItems(src.items);
       events.push({
         user_id: company.user_id,
@@ -326,6 +332,9 @@ async function collectInvestorsPage(
     const body = await readCapped(resp, IR_BODY_CAP_BYTES);
     if (/investor/i.test(body)) {
       patch.ir_seen_at = now.toISOString();
+      // First visit is a baseline: a page that already existed is not news.
+      // Only a page that appears on a LATER check becomes an event/flag.
+      if (!company.checked_at) return;
       events.push({
         user_id: company.user_id,
         tracked_company_id: company.id,
@@ -357,7 +366,8 @@ function slugCandidates(company: Company): string[] {
   return out;
 }
 
-type Job = { id: string; title: string; url: string };
+type Job = { id: string; title: string; url: string; postedAt: string | null };
+const JOB_MAX_AGE_MS = 45 * 86400000;
 
 async function fetchGreenhouse(slug: string): Promise<Job[] | null> {
   const resp = await timedFetch(`https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`);
@@ -365,7 +375,7 @@ async function fetchGreenhouse(slug: string): Promise<Job[] | null> {
   const data = safeJson(await resp.text());
   const jobs = data?.jobs;
   if (!Array.isArray(jobs)) return null;
-  return jobs.map((j: any) => ({ id: String(j.id), title: String(j.title || ""), url: String(j.absolute_url || "") }));
+  return jobs.map((j: any) => ({ id: String(j.id), title: String(j.title || ""), url: String(j.absolute_url || ""), postedAt: j.updated_at ? new Date(j.updated_at).toISOString() : null }));
 }
 
 async function fetchLever(slug: string): Promise<Job[] | null> {
@@ -373,7 +383,7 @@ async function fetchLever(slug: string): Promise<Job[] | null> {
   if (!resp || !resp.ok) return null;
   const data = safeJson(await resp.text());
   if (!Array.isArray(data)) return null;
-  return data.map((j: any) => ({ id: String(j.id), title: String(j.text || ""), url: String(j.hostedUrl || "") }));
+  return data.map((j: any) => ({ id: String(j.id), title: String(j.text || ""), url: String(j.hostedUrl || ""), postedAt: j.createdAt ? new Date(Number(j.createdAt)).toISOString() : null }));
 }
 
 async function fetchAshby(slug: string): Promise<Job[] | null> {
@@ -382,7 +392,7 @@ async function fetchAshby(slug: string): Promise<Job[] | null> {
   const data = safeJson(await resp.text());
   const jobs = data?.jobs;
   if (!Array.isArray(jobs)) return null;
-  return jobs.map((j: any) => ({ id: String(j.id), title: String(j.title || ""), url: String(j.jobUrl || j.applyUrl || "") }));
+  return jobs.map((j: any) => ({ id: String(j.id), title: String(j.title || ""), url: String(j.jobUrl || j.applyUrl || ""), postedAt: j.publishedAt ? new Date(j.publishedAt).toISOString() : null }));
 }
 
 async function collectJobBoards(
@@ -411,7 +421,7 @@ async function collectJobBoards(
       patch.ats = { vendor: found.vendor, slug: found.slug };
       vendor = found.vendor;
       slug = found.slug;
-      emitJobEvents(company, found.jobs, found.vendor, events);
+      emitJobEvents(company, found.jobs, found.vendor, events, now);
     } else {
       patch.ats = { vendor: "none" };
     }
@@ -423,14 +433,18 @@ async function collectJobBoards(
     if (vendor === "greenhouse") jobs = await fetchGreenhouse(slug);
     else if (vendor === "lever") jobs = await fetchLever(slug);
     else if (vendor === "ashby") jobs = await fetchAshby(slug);
-    if (jobs) emitJobEvents(company, jobs, vendor, events);
+    if (jobs) emitJobEvents(company, jobs, vendor, events, now);
   }
 }
 
-function emitJobEvents(company: Company, jobs: Job[], vendor: string, events: NewEvent[]): void {
+function emitJobEvents(company: Company, jobs: Job[], vendor: string, events: NewEvent[], now: Date): void {
   for (const job of jobs) {
     const cls = classifyJobTitle(job.title);
     if (!cls) continue; // "N other roles posted" is not an event — keep noise down
+    // Only roles posted recently count. A board's long-standing openings are
+    // baseline, not a signal; without a posted date we cannot tell, so skip.
+    if (!job.postedAt) continue;
+    if (now.getTime() - new Date(job.postedAt).getTime() > JOB_MAX_AGE_MS) continue;
     events.push({
       user_id: company.user_id,
       tracked_company_id: company.id,
@@ -441,7 +455,7 @@ function emitJobEvents(company: Company, jobs: Job[], vendor: string, events: Ne
       summary: null,
       source: vendor,
       source_url: job.url || null,
-      occurred_at: null, // job boards don't reliably give a posted date across vendors
+      occurred_at: job.postedAt,
       external_id: job.id,
     });
   }
@@ -455,26 +469,6 @@ function domainEndsWith(host: string, domain: string): boolean {
   return h === d || h.endsWith(`.${d}`);
 }
 
-const ROUND_RE = /\bseries\s+([a-e])\b/i;
-const AMOUNT_RE = /\$\s?([\d.]+)\s?(million|billion|m|b)?\b/i;
-
-function parseFundraiseFromTitle(title: string): { round: string | null; amount: number | null } {
-  let round: string | null = null;
-  const roundMatch = title.match(ROUND_RE);
-  if (roundMatch) round = `Series ${roundMatch[1].toUpperCase()}`;
-  else if (/\bseed\b/i.test(title)) round = "Seed";
-
-  let amount: number | null = null;
-  const amountMatch = title.match(AMOUNT_RE);
-  if (amountMatch) {
-    const n = parseFloat(amountMatch[1]);
-    const unit = (amountMatch[2] || "").toLowerCase();
-    if (unit.startsWith("b")) amount = n * 1_000_000_000;
-    else if (unit.startsWith("m") || unit === "") amount = n * 1_000_000;
-  }
-  return { round, amount };
-}
-
 async function collectNews(
   company: Company,
   now: Date,
@@ -482,13 +476,19 @@ async function collectNews(
   events: NewEvent[],
   patch: CompanyPatch,
 ): Promise<void> {
-  const window = company.checked_at ? "7d" : "30d";
+  const window = company.checked_at ? "7d" : "14d";
+  const NEWS_PLAIN_CAP = 8; // plain "news" items per company per run; classified items are never capped
+  let plainCount = 0;
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${company.name}"`)}+when:${window}&hl=en-US&gl=US&ceid=US:en`;
   const resp = await timedFetch(url, { headers: { "User-Agent": userAgent } });
   if (!resp || !resp.ok) return;
   const xml = await resp.text();
   const itemsXml = allMatches(xml, "item", "");
-  const wanted = company.name.toLowerCase();
+  // Whole-word, case-insensitive match on the company name: lookarounds keep
+  // "Ramp" from matching inside "On-ramp" or "rampant" (hyphen-adjacent
+  // characters are treated as word-adjacent, not as a boundary).
+  const escapedName = company.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const wantedRe = new RegExp(`(?<![\\w-])${escapedName}(?![\\w-])`, "i");
 
   for (const itemXml of itemsXml) {
     const title = tagValue(itemXml, "title") || "";
@@ -499,12 +499,13 @@ async function collectNews(
 
     let hostMatches = false;
     try { hostMatches = domainEndsWith(new URL(link).hostname, company.domain || ""); } catch { /* ignore */ }
-    if (!title.toLowerCase().includes(wanted) && !hostMatches) continue;
+    if (!wantedRe.test(title) && !hostMatches) continue;
 
     const cls = classifyNewsTitle(title);
     const occurredAt = pubDate ? new Date(pubDate).toISOString() : null;
     const externalId = await sha1Hex(link);
 
+    if (cls === "news") { if (plainCount >= NEWS_PLAIN_CAP) continue; plainCount++; }
     let eventType = "news";
     if (cls === "news_fundraise") eventType = "fundraise";
     else if (cls === "product_launch") eventType = "product";

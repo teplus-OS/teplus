@@ -25,6 +25,13 @@ finds the user's database, and it is gitignored so it never leaves their machine
 and Teplus runs; there is no build step, no server of ours, and customizing it
 is a prompt away.
 
+**setup.sh** — one script that does the rest of setup after the Supabase
+project, schema, and auth user exist / it links the project, sets
+`COVERAGE_SECRET`, deploys both edge functions, writes
+`app/supabase-config.js`, prints the filled-in coverage schedule SQL, and
+deploys `app/` to Vercel from a copy outside the repo; an assistant that can
+run commands should just run it instead of doing each step by hand.
+
 **Vercel deployment** — the `app` folder uploaded with `vercel --prod` from
 inside `app/`, on the free Hobby tier / gives the user a private URL to
 bookmark; the CLI uploads the local folder, so `supabase-config.js` ships
@@ -89,9 +96,17 @@ system on day one (the setup guide's three prompts cover it).
 - Run schema.sql in full, never partially — the security policies ARE the
   product's protection model.
 - Never use the service_role key in the app; only the publishable key.
-- Disable public signups and enable leaked password protection in the
-  Supabase dashboard.
+- Disable public signups and set the minimum password length to 12 in the
+  Supabase dashboard. (Leaked password protection is a Pro plan feature;
+  this is the free-plan equivalent.)
 - The user's data lives only in their database; the app file holds no data.
+- Vercel turns on Deployment Protection by default on the Hobby plan. If
+  the URL redirects to a Vercel login instead of Teplus, turn it off at
+  Settings → Deployment Protection → Vercel Authentication.
+- Deploy to Vercel from a copy of `app/` outside the git repo, not from
+  inside it. Vercel blocks deploys from a git folder whose last commit
+  email isn't the deploying account's; `setup.sh` already deploys from a
+  copy for this reason.
 - Run `coverage-schedule.sql` only after the coverage function is deployed
   and `COVERAGE_SECRET` is set. Running it first schedules a job that has
   nothing to call.

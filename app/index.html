@@ -1830,7 +1830,7 @@ body.has-action-bar .people{padding-bottom:76px}
   // [first-party] v1.13 E3 — single source of truth for the app version;
   // every display of it (the version card, and anywhere else that ever
   // needs it) reads this instead of a second hardcoded literal.
-  const APP_VERSION = 'v1.1.1';
+  const APP_VERSION = 'v1.1.2';
   /* First name for the Home greeting: taken from the signed-in user's
      metadata (full_name) or email local-part at boot; null → no name. */
   let USER_FIRST = null;
@@ -4863,6 +4863,15 @@ body.has-action-bar .people{padding-bottom:76px}
         (CAL.error ? '<div class="err-line" style="margin-top:10px">'+esc(CAL.error)+'</div>' : '');
       return;
     }
+    if(CAL.state==='unavailable'){
+      // No edge function reachable (not deployed / network) or no ics_url
+      // set yet — a raw fetch error is noise the viewer can't act on, and a
+      // Retry link just re-triggers the same failure, so show a quiet line
+      // instead. Real transient errors (function reachable, ics_url set,
+      // something else went wrong) still get the error line + Retry below.
+      el.innerHTML = '<div class="empty-note">No calendar connected.</div>';
+      return;
+    }
     if(CAL.state==='error'){
       el.innerHTML = '<div class="err-line"><span>'+esc(CAL.error || 'Calendar unavailable.')+'</span>'+
         '<button class="link-btn" onclick="__teplus.reloadCalendar()">Retry</button></div>';
@@ -4894,7 +4903,24 @@ body.has-action-bar .people{padding-bottom:76px}
       else if(data.error) CAL = { state:'error', error:data.error };
       else CAL = { state:'ok', events:data.events || [] };
     } catch(e){
-      CAL = { state:'error', error:(e && e.message) || 'Could not reach the calendar feed.' };
+      const msg = (e && e.message) || '';
+      // FunctionsFetchError (Supabase JS client, thrown when the function
+      // can't be reached at all — not deployed, DNS/network failure) or a
+      // plain network error carries no signal the viewer can act on, so
+      // treat it as "no calendar" rather than surfacing the raw message.
+      // Same when there's no ics_url configured yet: any error there just
+      // means the feed isn't set up, not a real transient failure.
+      const looksMissingOrNetwork = (e && e.name === 'FunctionsFetchError') ||
+        /Failed to send a request to the Edge Function/i.test(msg) ||
+        /Failed to fetch/i.test(msg) ||
+        /NetworkError/i.test(msg) ||
+        (e instanceof TypeError);
+      const hasIcsUrl = !!(SETTINGS && SETTINGS.ics_url);
+      if(looksMissingOrNetwork || !hasIcsUrl){
+        CAL = { state:'unavailable' };
+      } else {
+        CAL = { state:'error', error: msg || 'Could not reach the calendar feed.' };
+      }
     }
     renderCalendar();
     renderHomeHead();

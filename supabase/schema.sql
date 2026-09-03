@@ -15,7 +15,8 @@
 --
 -- After running this, in the Supabase dashboard:
 --   1. Authentication → disable public signups (each deployment is personal).
---   2. Authentication → enable leaked password protection.
+--   2. Authentication → Email provider → minimum password length 12.
+--      (Leaked password protection is Pro plan only; skip on free.)
 -- ============================================================================
 
 -- ───────────────────────── core tables ─────────────────────────

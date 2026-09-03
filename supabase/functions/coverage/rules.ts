@@ -35,6 +35,15 @@ const SENIOR_ROLE_RE = /\b(ceo|cfo|coo|cto|cro|chief|president|vp|head of)\b/i;
 const DEPARTURE_RE = /\b(steps down|departs|resigns|exits|leaves)\b/i;
 const FUNDRAISE_VERB_RE = /\b(raises|raised|closes|secures)\b/i;
 const FUNDRAISE_AMOUNT_RE = /\b(\$|million|billion|series [a-e]|seed)\b/i;
+// Earnings/results language that should never be classified as a fundraise,
+// even when a fundraise-shaped verb ("raises", "raised") shows up in a
+// "revenue raised" / "guidance raised" sentence.
+const EARNINGS_EXCLUDE_RE =
+  /\b(revenue|earnings|guidance|stock|shares|quarter|q[1-4]|fiscal|results|profit|sales rise|arr)\b/i;
+// A fundraise needs a funding-specific word alongside the verb — "raises" or
+// "secures" alone is also used for revenue/guidance headlines.
+const FUNDRAISE_WORD_RE =
+  /\b(funding|round|raises?|raised|series [a-e]|seed|investors?|valuation|financing)\b/i;
 const PARTNER_RE = /\b(partners with|partnership|teams up|selects|chooses)\b/i;
 const PRODUCT_RE = /\b(launches|unveils|introduces|releases)\b/i;
 
@@ -42,10 +51,35 @@ export function classifyNewsTitle(title: string): NewsTitleClass {
   if (!title) return "news";
   if (ARRIVAL_VERB_RE.test(title) && SENIOR_ROLE_RE.test(title)) return "senior_arrival";
   if (DEPARTURE_RE.test(title)) return "exec_departure";
-  if (FUNDRAISE_VERB_RE.test(title) && FUNDRAISE_AMOUNT_RE.test(title)) return "news_fundraise";
+  if (
+    FUNDRAISE_VERB_RE.test(title) &&
+    FUNDRAISE_AMOUNT_RE.test(title) &&
+    FUNDRAISE_WORD_RE.test(title) &&
+    !EARNINGS_EXCLUDE_RE.test(title)
+  ) return "news_fundraise";
   if (PARTNER_RE.test(title)) return "partner_pr";
   if (PRODUCT_RE.test(title)) return "product_launch";
   return "news";
+}
+
+const ROUND_RE = /\bseries\s+([a-e])\b/i;
+const AMOUNT_RE = /\$\s?([\d.]+)\s?(million|billion|m|b)?\b/i;
+
+export function parseFundraiseFromTitle(title: string): { round: string | null; amount: number | null } {
+  let round: string | null = null;
+  const roundMatch = title.match(ROUND_RE);
+  if (roundMatch) round = `Series ${roundMatch[1].toUpperCase()}`;
+  else if (/\bseed\b/i.test(title)) round = "Seed";
+
+  let amount: number | null = null;
+  const amountMatch = title.match(AMOUNT_RE);
+  if (amountMatch) {
+    const n = parseFloat(amountMatch[1]);
+    const unit = (amountMatch[2] || "").toLowerCase();
+    if (unit.startsWith("b")) amount = n * 1_000_000_000;
+    else if (unit.startsWith("m") || unit === "") amount = n * 1_000_000;
+  }
+  return { round, amount };
 }
 
 // ───────────────────────── 8-K item classifier (§4.A) ───────────────────────
@@ -155,8 +189,9 @@ function startOfDay(d: Date): Date {
 // can't find an "as <role>" or a bare title pattern.
 function extractRole(title: string | null | undefined): string | null {
   if (!title) return null;
-  const asMatch = title.match(/\bas\s+([A-Z][A-Za-z&.,'\- ]{2,60})/);
-  if (asMatch) return asMatch[1].trim().replace(/[.,]+$/, "");
+  // Only a recognizable title word counts. "as executive chair to join X"
+  // style fragments produced ugly why-now lines, so the loose "as <words>"
+  // pattern is gone; a known role word is required.
   const roleMatch = title.match(
     /\b((?:Chief [A-Za-z]+ Officer)|CFO|CEO|COO|CTO|CRO|President|Vice President(?: of [A-Za-z ]+)?|VP(?:,? [A-Za-z ]+)?|General Counsel|Controller|Treasurer|Head of [A-Za-z ]+)\b/,
   );
@@ -177,11 +212,11 @@ function whyNowFor(subtype: string, title: string | null | undefined, age: strin
     case "8_k_leadership_change":
     case "senior_arrival": {
       const role = extractRole(title);
-      return role ? `New ${role} announced ${age}` : `New leadership change ${age}`;
+      return role ? `New ${role} announced ${age}` : `Leadership change reported ${age}`;
     }
     case "exec_departure": {
       const role = extractRole(title);
-      return role ? `${role} departed ${age}` : `Leadership change ${age}`;
+      return role ? `${role} departure reported ${age}` : `Leadership departure reported ${age}`;
     }
     case "ir_page_live":
       return `Investors page went live ${age}`;

@@ -21,9 +21,6 @@ window.SUPABASE_CONFIG = {
   publishableKey: '__PUBLISHABLE_KEY__',
 };
 
-// Values that mean "not configured yet" rather than a real credential.
-window.SUPABASE_CONFIG_PLACEHOLDERS = ['__PUBLISHABLE_KEY__', '__SUPABASE_URL__'];
-
 // Instantiate the shared client. Every page that needs data loads the
 // vendored supabase-js script *before* this file, then reads
 // window.supabaseClient.
@@ -33,8 +30,10 @@ window.SUPABASE_CONFIG_PLACEHOLDERS = ['__PUBLISHABLE_KEY__', '__SUPABASE_URL__'
     return;
   }
   const { url, publishableKey } = window.SUPABASE_CONFIG;
-  const placeholders = window.SUPABASE_CONFIG_PLACEHOLDERS || [];
-  const unset = v => !v || placeholders.indexOf(v) !== -1;
+  // A value is "not filled in" when it is empty or still looks like a
+  // placeholder (__LIKE_THIS__). No separate placeholder list, so a global
+  // find-and-replace during setup cannot accidentally break the check.
+  const unset = v => !v || /^__[A-Z_]+__$/.test(String(v).trim());
   if (unset(url) || unset(publishableKey)) {
     console.warn('[Teplus] Supabase config not filled in — running in DEMO MODE with sample data.');
     return;
