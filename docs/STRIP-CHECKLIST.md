@@ -1,5 +1,8 @@
 # Teplus open source strip checklist
 
+Free: relationship OS + public signal collector. Engine, not in this repo:
+capital score, sequence detection, paid data sources, outreach drafts.
+
 Working rule: the fresh folder starts EMPTY and files are copied IN one by
 one, each one reviewed. Nothing is ever bulk-copied from the old repo, so the
 contacts xlsx and any secret can never ride along by accident.
@@ -62,3 +65,10 @@ contacts xlsx and any secret can never ride along by accident.
 ## Deliberately skipped (decided 2026-08-28)
 - inline onclick cleanup
 - birthday schema drop in PROD (the fresh schema simply never creates it)
+
+## v1.1 additions
+- [x] supabase/migrations/2026-09-03-companies-coverage.sql
+- [x] supabase/functions/coverage/ (index.ts, rules.ts, rules_test.ts, README.md)
+- [x] supabase/coverage-schedule.sql
+- [x] docs/SPEC-companies.md
+- [x] Capital score removed from app, schema, demo data, docs (grep clean 2026-09-03; only the migration's drop-column lines and the SPEC mention it)

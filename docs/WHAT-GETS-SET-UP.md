@@ -25,6 +25,11 @@ finds the user's database, and it is gitignored so it never leaves their machine
 and Teplus runs; there is no build step, no server of ours, and customizing it
 is a prompt away.
 
+**Vercel deployment** — the `app` folder uploaded with `vercel --prod` from
+inside `app/`, on the free Hobby tier / gives the user a private URL to
+bookmark; the CLI uploads the local folder, so `supabase-config.js` ships
+with it without ever entering git, and `app/vercel.json` adds security headers.
+
 **Demo mode** — automatic when the config is unfilled / lets the user see the
 whole product with sample data before creating anything.
 
@@ -42,17 +47,33 @@ being remembered too late.
 thin / uncovered) / the gap between how much a firm matters and who you know
 there is the business development to-do list.
 
-**Companies** — a read-only lens on tracked companies ranked by signal /
-optional; empty until the user brings a data feed (below).
+**Companies** — updates on the companies you cover, the people you know
+there, and a reach out flag with a plain why now / optional; empty until
+you add companies and turn on coverage (below).
 
 ## Optional pieces (safe to skip at setup)
 
-**Signal feed (`tracked_companies` + `company_events` tables)** — the data
-behind the Companies tab and Home news feed; Teplus ships no collector /
-any process the user runs (script, vendor export, scheduled AI agent) can
-insert rows and the app picks them up; event types are fundraise, hire,
-filing, news, product, mention. Everything else works fully while these sit
-empty.
+**Coverage edge function** — a scheduled server function that pulls public
+signals (SEC filings, an investors page, job postings, news, DNS changes)
+for the companies you track and writes them back to the database /
+this is what makes the Companies tab real instead of empty.
+
+**COVERAGE_SECRET** — a random string you set as a Supabase secret / it is
+the password the scheduled job uses to call the coverage function, so no
+one else can trigger it.
+
+**Two Vault secrets (`coverage_url`, `coverage_secret`)** — the function's
+URL and the same secret, stored in Supabase Vault by
+`coverage-schedule.sql` / keeps them out of plain text in the cron job.
+
+**Two cron jobs** — `teplus-coverage` runs the collector every 15 minutes;
+`teplus-keepalive` runs weekly and just touches the database / together
+they keep the coverage data fresh and keep the free project from pausing.
+
+**Company coverage card** — a contact email, an on/off toggle, and a
+batch size, in the card on the Home tab's right rail / the contact email is required
+because the SEC asks for it in requests; the toggle is the only runtime
+switch once the schedule is set up.
 
 **calendar-feed edge function** — a small server function that fetches the
 user's private calendar ICS link / powers the Today panel on Home; skippable,
@@ -71,3 +92,6 @@ system on day one (the setup guide's three prompts cover it).
 - Disable public signups and enable leaked password protection in the
   Supabase dashboard.
 - The user's data lives only in their database; the app file holds no data.
+- Run `coverage-schedule.sql` only after the coverage function is deployed
+  and `COVERAGE_SECRET` is set. Running it first schedules a job that has
+  nothing to call.

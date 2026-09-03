@@ -125,29 +125,46 @@ create table public.app_settings (
   -- Secret calendar ICS address. Only readable by the owner (RLS) and by the
   -- calendar-feed edge function (service role). Optional feature.
   ics_url text,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  -- Company coverage switches. See supabase/functions/coverage/README.md.
+  coverage_enabled boolean not null default false,
+  coverage_contact_email text,       -- goes into the EDGAR User-Agent, per SEC fair access policy
+  coverage_batch integer not null default 8,
+  coverage_last_run_at timestamptz,
+  -- Touched by every scheduled collector call and by the weekly keep-alive
+  -- cron job, so a free project never looks idle. Harmless if unused.
+  keepalive_at timestamptz
 );
 
--- ───────────── companies / events (signal-fed, optional) ─────────────
--- These two tables power the Companies tab and the Home live feed. Teplus
--- ships no collector: they stay empty unless you populate them yourself
--- (any process writing rows with your user_id works). The app degrades
--- gracefully while they are empty.
+-- ───────────── companies / events (public signal collector) ─────────────
+-- These tables power the Companies tab and the Home live feed. Companies are
+-- user-writable: add one, and the coverage collector (supabase/functions/
+-- coverage) — a small edge function that runs on a schedule inside your own
+-- project — pulls public signals for it (EDGAR filings, job postings, news,
+-- DNS, an investors page) and writes company_events plus a reach out flag.
+-- Nothing runs on Teplus infrastructure; the schedule lives in your project
+-- (see supabase/coverage-schedule.sql). The app degrades gracefully while
+-- coverage is off or a company has no events yet.
 
 create table public.tracked_companies (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid(),
-  st_id uuid not null,               -- stable external id for your own sync's dedupe
+  st_id uuid,                        -- stable external id for an external sync's dedupe; null for user-added companies
   name text not null,
   domain text,
   sector text,
   stage text,
   hq_location text,
-  coverage_tier text,
-  capital_score numeric,
-  score_state text,
+  notes text,
+  added_by text not null default 'user' check (added_by in ('user','sync')),
+  cik text,                          -- EDGAR CIK once resolved
+  ats jsonb,                         -- discovered job board, e.g. {"vendor":"greenhouse","slug":"acme"}; null until probed; {"vendor":"none"} once probed with no hit
+  dns_snapshot jsonb,                -- last seen MX/NS records
+  ir_seen_at timestamptz,            -- first time an investors page was found
+  checked_at timestamptz,            -- last collector visit (null = never)
   reach_out boolean default false,
-  score_delta_7d numeric,
+  why_now text,                      -- plain sentence for the reach out flag, null when not flagged
+  reach_out_until timestamptz,       -- when the current flag expires
   last_fundraise_date date,
   last_fundraise_round text,
   last_fundraise_amount_usd numeric,
@@ -162,13 +179,27 @@ create table public.company_events (
   tracked_company_id uuid references public.tracked_companies(id) on delete cascade,
   company_name text not null,
   event_type text not null default 'other' check (event_type in ('hire','fundraise','filing','news','product','mention','other')),
+  subtype text,
   title text not null,
   summary text,
   source text,
   source_url text,
   occurred_at timestamptz,
   detected_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
   external_id text
+);
+
+create table public.coverage_runs (
+  -- Small log of collector invocations, for smoke tests and support. The
+  -- collector keeps only the newest 200 rows per run (deletes older ones).
+  id bigint generated always as identity primary key,
+  user_id uuid not null,
+  ran_at timestamptz not null default now(),
+  companies integer not null default 0,
+  events integer not null default 0,
+  ms integer,
+  errors jsonb not null default '[]'
 );
 
 -- ───────────────────────── indexes ─────────────────────────
@@ -189,7 +220,10 @@ create index organizations_target_idx on public.organizations (target_fund_id) w
 create index organizations_tier_idx on public.organizations (tier) where tier is not null;
 create index organizations_suggested_idx on public.organizations (tier_suggested) where tier_suggested is not null;
 
-create unique index tracked_companies_st_unique on public.tracked_companies (user_id, st_id);
+-- st_id is only set by an external sync; user-added companies leave it null.
+create unique index tracked_companies_st_unique on public.tracked_companies (user_id, st_id) where st_id is not null;
+-- Oldest-checked-first batch selection for the collector.
+create index tracked_companies_batch_idx on public.tracked_companies (user_id, status, checked_at nulls first);
 -- Dedupe on (user, source, external_id) so repeat syncs don't double-insert.
 create unique index company_events_source_unique on public.company_events (user_id, source, external_id);
 create index company_events_company_idx on public.company_events (tracked_company_id);
@@ -243,6 +277,7 @@ alter table public.tasks enable row level security;
 alter table public.app_settings enable row level security;
 alter table public.tracked_companies enable row level security;
 alter table public.company_events enable row level security;
+alter table public.coverage_runs enable row level security;
 
 create policy org_owner on public.organizations for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy target_funds_owner on public.target_funds for all using (user_id = auth.uid()) with check (user_id = auth.uid());
@@ -252,6 +287,8 @@ create policy tasks_owner on public.tasks for all using (user_id = auth.uid()) w
 create policy settings_owner on public.app_settings for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy tracked_owner on public.tracked_companies for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy company_events_owner on public.company_events for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+-- Read only: the collector writes coverage_runs with the service role, which bypasses RLS.
+create policy coverage_runs_owner_read on public.coverage_runs for select using (user_id = auth.uid());
 
 -- ───────────────────────── grants: defense in depth ─────────────────────────
 -- Strip ALL data grants from anon (stricter than the Supabase default). RLS is

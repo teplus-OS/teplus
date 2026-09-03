@@ -1012,12 +1012,11 @@ body.privacy .search input:not(:placeholder-shown){
      off the Orgs table, which folds a different set of columns away below. */
   .col-head:not(.tc):not(.og)>:nth-child(3),.row:not(.tc):not(.og)>:nth-child(3){display:none}
   .col-head:not(.tc):not(.og)>:nth-child(6),.row:not(.tc):not(.og)>:nth-child(6){display:none}
-  /* Companies keeps Name + Capital score + Last signal; sector, reach-out
-     and fundraise fold into the expanded detail panel. */
+  /* Companies keeps Name + Reach out + Last signal; sector and fundraise
+     fold into the expanded detail panel. */
   .col-head.tc,.row.tc{grid-template-columns:20px minmax(0,1fr) 58px 64px}
   .col-head.tc>:nth-child(3),.row.tc>:nth-child(3),
-  .col-head.tc>:nth-child(5),.row.tc>:nth-child(5),
-  .col-head.tc>:nth-child(7),.row.tc>:nth-child(7){display:none}
+  .col-head.tc>:nth-child(6),.row.tc>:nth-child(6){display:none}
   .filters{padding:12px 16px}
   .people{padding:0 16px 80px}
   .home{padding:20px 16px 72px}
@@ -1227,6 +1226,7 @@ body.has-action-bar .people{padding-bottom:76px}
     <div class="menu" id="topbar-add-menu-list" style="display:none">
       <div role="button" tabindex="0" onclick="__teplus.addMenuPerson()">Person</div>
       <div role="button" tabindex="0" onclick="__teplus.addMenuFirm()">Firm</div>
+      <div role="button" tabindex="0" onclick="__teplus.addMenuCompany()">Company</div>
     </div>
   </div>
   <!-- [first-party] v1.12 B2 — "Log touch" is now the one filled btn-primary
@@ -1352,6 +1352,15 @@ body.has-action-bar .people{padding-bottom:76px}
         <div class="panel-head"><div class="panel-title">Open loops</div><span class="panel-n" id="next-count">0</span></div>
         <div id="next-body"></div>
       </section>
+
+      <!-- [first-party] v1.1.0 — SPEC §3.7. The only runtime switch coverage
+           needs: the schedule itself is created once by the setup SQL, so
+           this toggle just flips app_settings.coverage_enabled. renderCoverageSettings()
+           owns everything inside #coverage-body. -->
+      <section class="rail-open" id="card-coverage">
+        <div class="panel-head"><div class="panel-title">Company coverage</div></div>
+        <div id="coverage-body"></div>
+      </section>
     </div>
   </div>
 </main>
@@ -1368,10 +1377,9 @@ body.has-action-bar .people{padding-bottom:76px}
     <div class="filters-right">
       <span class="filter-group"><span class="filters-label">Sort</span>
       <select class="sel" id="tc-sort-sel" onchange="__teplus.onTcSort()">
-        <option value="score">Capital score</option>
+        <option value="signal">Recent signal</option>
         <option value="name">Name (A–Z)</option>
         <option value="reach">Reach out</option>
-        <option value="signal">Recent signal</option>
         <option value="fundraise">Recent fundraise</option>
       </select></span>
     </div>
@@ -1380,13 +1388,17 @@ body.has-action-bar .people{padding-bottom:76px}
   <!-- [first-party] v1.7 — Live feed card removed: Home's Fund & company news
        column (renderNews) now covers that surface, so the card was a
        redundant read of the same company_events data. Replaced with a
-       one-line stat strip; renderTcStats() owns its content. -->
+       one-line stat strip; renderTcStats() owns its content.
+       [first-party] v1.1.0 — coverage-off / zero-company empty states
+       (#tc-empty) render instead of the strip+table when there's nothing to
+       show; renderTracked() toggles which is visible. -->
   <div class="tc-stat-strip" id="tc-stat-strip"></div>
 
   <div class="col-head tc" id="tc-col-head">
-    <div></div><div>Name</div><div>Sector</div><div>Capital score</div><div>Reach out</div><div>Last signal</div><div>Fundraise</div>
+    <div></div><div>Name</div><div>Sector</div><div>Reach out</div><div>Last signal</div><div>Fundraise</div>
   </div>
   <div class="people" id="tc-table"></div>
+  <div id="tc-empty" style="display:none"></div>
 </div>
 
 <!-- ───── ORGS TAB (organizations, tiering + coverage) ───── [first-party] -->
@@ -1639,6 +1651,49 @@ body.has-action-bar .people{padding-bottom:76px}
   </div>
 </div>
 
+<!-- ───── Add company modal ───── [first-party] v1.1.0 — SPEC §3.3. Name and
+     domain required; a duplicate domain for this user blocks the insert
+     (toast, same style every other duplicate check in the app uses). -->
+<div class="modal-overlay" id="company-modal" onclick="if(event.target===this)closeAddCompany()">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add company</div>
+      <div class="modal-sub">Track a company for public-signal coverage.</div>
+      <button class="modal-close" onclick="closeAddCompany()"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-grid">
+        <div class="mfield full"><label>Name *</label><input class="f-input" id="nc-name" placeholder="Acme Inc" autocomplete="off"/></div>
+        <div class="mfield full"><label>Domain *</label><input class="f-input" id="nc-domain" placeholder="acme.com" autocomplete="off"/></div>
+        <div class="mfield"><label>Sector</label><input class="f-input" id="nc-sector" placeholder="Fintech" autocomplete="off"/></div>
+        <div class="mfield"><label>Stage</label>
+          <select class="sel" id="nc-stage" style="width:100%">
+            <option value="">—</option>
+            <option value="Seed">Seed</option>
+            <option value="Series A">Series A</option>
+            <option value="Series B">Series B</option>
+            <option value="Series C+">Series C+</option>
+            <option value="Growth">Growth</option>
+            <option value="Public">Public</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="mfield full"><label>HQ location</label><input class="f-input" id="nc-hq" placeholder="New York, NY" autocomplete="off"/></div>
+        <div class="mfield full"><label>Notes</label><input class="f-input" id="nc-notes" placeholder="Optional" autocomplete="off"/></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div class="modal-err" id="nc-err"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="mini-btn ghost" onclick="closeAddCompany()">Cancel</button>
+        <button class="mini-btn" onclick="submitAddCompany()">Add company</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ───── Command palette (Cmd+K / Ctrl+K) ───── [first-party] v1.5 batch 5 (E18) -->
 <div class="modal-overlay palette-overlay" id="cmdk-overlay" onclick="if(event.target===this) __teplus.closePalette()">
   <div class="cmdk-modal" id="cmdk-modal">
@@ -1759,7 +1814,7 @@ body.has-action-bar .people{padding-bottom:76px}
 <script src="supabase-config.js"></script>
 <script>
 /* ═══════════════════════════════════════════
-   RICKYCRM app logic. Vanilla JS, no build step.
+   TEPLUS app logic. Vanilla JS, no build step.
    Runs live against Supabase when window.supabaseClient exists,
    otherwise falls back to in-memory DEMO data.
 ═══════════════════════════════════════════ */
@@ -1770,7 +1825,7 @@ body.has-action-bar .people{padding-bottom:76px}
   // [first-party] v1.13 E3 — single source of truth for the app version;
   // every display of it (the version card, and anywhere else that ever
   // needs it) reads this instead of a second hardcoded literal.
-  const APP_VERSION = 'v1.0.1';
+  const APP_VERSION = 'v1.1.0';
   /* First name for the Home greeting: taken from the signed-in user's
      metadata (full_name) or email local-part at boot; null → no name. */
   let USER_FIRST = null;
@@ -1818,7 +1873,8 @@ body.has-action-bar .people{padding-bottom:76px}
 
   /* Home state. Each widget carries its own {state} so a failure degrades
      to a quiet line instead of taking the page down. */
-  const SETTINGS_DEFAULTS = { weather_lat:40.7128, weather_lon:-74.0060, weather_label:'New York, NY', ics_url:null };
+  const SETTINGS_DEFAULTS = { weather_lat:40.7128, weather_lon:-74.0060, weather_label:'New York, NY', ics_url:null,
+    coverage_enabled:false, coverage_contact_email:null, coverage_batch:8, coverage_last_run_at:null };
   let SETTINGS = null;
   let WX = { state:'loading' };
   let WXMSG = '';
@@ -1866,10 +1922,10 @@ body.has-action-bar .people{padding-bottom:76px}
   let tcSearchTimer = null;
   /* [first-party] v1.6 batch 1 — single source of truth for Companies-tab sort;
      both the header clicks and the <select id="tc-sort-sel"> read/write this. */
-  let TC_SORT = {key:'score', dir:1};
+  let TC_SORT = {key:'signal', dir:1};
   /* Default direction per key the first time it's clicked/selected. dir:1 means
      "as documented below"; dir:-1 reverses it. */
-  const TC_SORT_DEFAULT_DIR = {name:1, score:1, reach:1, signal:1, fundraise:1};
+  const TC_SORT_DEFAULT_DIR = {name:1, reach:1, signal:1, fundraise:1};
   /* People-match index for the "People you know here" panel. Built ONCE per
      people-array change (O(people)), never per company — a 500 × 2,600 nested
      scan is 1.3M string comparisons on every repaint. */
@@ -2173,16 +2229,19 @@ body.has-action-bar .people{padding-bottom:76px}
   /* [first-party] v1.15 — bdayIn()/demo birthdays removed with the birthday field. */
 
   /* ───── demo data ───── */
-  /* Positional factory purely to keep the eight demo companies on one line each;
-     the column order matches supabase/migrations/004_tracked_companies.sql.
-     [first-party] v1.9 B7 — trailing optional `status` ('active'|'exited',
-     default 'active' — matches the column's DB default), so every existing
-     call site is untouched. */
-  function tc(id,name,domain,sector,stage,hq,tier,score,state,reach,delta,frDate,frRound,frAmt,signalDays,syncedHrs,status){
-    return { id, st_id:'st-'+id, name, domain, sector, stage, hq_location:hq, coverage_tier:tier,
-      capital_score:score, score_state:state, reach_out:reach, score_delta_7d:delta,
+  /* Positional factory purely to keep the demo companies on one line each;
+     the column order matches supabase/schema.sql (v1.1.0 — the capital
+     score/state/delta/coverage_tier columns are gone; added_by/notes/why_now/
+     reach_out_until/checked_at take their place). added_by defaults 'user'
+     (matches the column's DB default) so the seven pre-v1.1 rows below don't
+     need to say so explicitly. */
+  function tc(id,name,domain,sector,stage,hq,reach,whyNow,reachDays,frDate,frRound,frAmt,signalDays,syncedHrs,status,addedBy,notes){
+    return { id, st_id:null, name, domain, sector, stage, hq_location:hq, notes: notes||null,
+      added_by: addedBy || 'user', reach_out: !!reach, why_now: whyNow || null,
+      reach_out_until: (reach && reachDays!=null) ? new Date(nowMs() + reachDays*86400000).toISOString() : null,
       last_fundraise_date:frDate, last_fundraise_round:frRound, last_fundraise_amount_usd:frAmt,
       last_signal_at: signalDays==null ? null : daysAgoIso(signalDays),
+      checked_at: signalDays==null ? null : daysAgoIso(signalDays),
       synced_at: new Date(nowMs() - (syncedHrs||0)*3600000).toISOString(),
       status: status || 'active' };
   }
@@ -2305,46 +2364,51 @@ body.has-action-bar .people{padding-bottom:76px}
       p.importance = DEMO_IMP[p.id] || 'standard';
       p.cadence_set_manually = Number(p.touch_cadence_days) !== DEFAULT_CADENCE;
     });
-    // Tracked companies: a one-way copy of the signal engine coverage. Northwind Labs,
-    // Meridian Capital and Bluebird Studio deliberately match demo orgs so the
-    // "People you know here" panel has something to show.
+    // Tracked companies: v1.1.0 — user-writable coverage list, no capital
+    // score. Northwind Labs, Meridian Capital and Bluebird Studio
+    // deliberately match demo orgs so the "People you know here" panel has
+    // something to show. Three carry a live reach-out flag (why_now strings
+    // taken straight from the SPEC §3.8 examples); five carry a fundraise.
     tracked = [
-      tc('c1','Northwind Labs','northwind.io','Infrastructure','Series B','Brooklyn, NY','Core',82,'rising',true,6.4,'2025-11-12','Series B',24000000,3,2),
-      tc('c2','Meridian Capital','meridian.vc','Venture capital','Growth','New York, NY','Core',64,'steady',false,-1.2,'2024-06-03','Fund III',180000000,9,2),
-      tc('c3','Kestrel Data','kestreldata.io','Data infrastructure','Series C','San Francisco, CA','Core',91,'rising',false,11,'2026-05-14','Series C',70000000,0,1),
-      tc('c4','Sable Energy','sableenergy.co','Energy & Utilities','Growth','Houston, TX','Fringe',57,'steady',false,2.1,'2023-09-18','Series D',250000000,60,6),
-      tc('c5','Halcyon Robotics','halcyonrobotics.com','Robotics','Seed','Austin, TX','Watch',41,'cooling',false,-4.8,'2026-02-20','Seed',6500000,21,4),
-      tc('c6','Bluebird Studio','bluebird.design','Design services','Bootstrapped','Lisbon, PT','Fringe',18,'dormant',false,0,null,null,null,120,9),
-      tc('c7','Verrata Health','verrata.health','Healthcare','Series A','Boston, MA','Watch',null,'unscored',false,null,'2025-08-01','Series A',12500000,45,7),
-      tc('c8','Orchard Freight','orchardfreight.com','Logistics','Series A','Chicago, IL','Watch',null,'unscored',false,null,null,null,null,null,12),
-      // [first-party] v1.9 B7/B9 verification rows. c9: a high score on
-      // purpose — an exited company must sink to the bottom of every sort
-      // mode EVEN when it would otherwise rank near the top on capital score.
-      // c10: stage is the raw enum string, not a pre-formatted label like the
-      // rows above — exercises fmtStage's 'series_a_plus' → 'Series A+' path.
-      tc('c9','Fenwick Traders','fenwicktraders.com','Fintech','Series B','Denver, CO','Fringe',88,'steady',false,0,null,null,null,200,30,'exited'),
-      tc('c10','Larkspur Bio','larkspur.bio','Biotech','series_a_plus','Cambridge, MA','Watch',52,'steady',false,1.4,'2026-01-10','Series A',9000000,15,3),
+      tc('c1','Northwind Labs','northwind.io','Infrastructure','Series B','Brooklyn, NY',true,'New CFO announced 12 days ago',33,'2025-11-12','Series B',24000000,3,2,'active','sync'),
+      tc('c2','Meridian Capital','meridian.vc','Venture capital','Growth','New York, NY',false,null,null,'2024-06-03','Fund III',180000000,9,3,'active','sync'),
+      tc('c3','Kestrel Data','kestreldata.io','Data infrastructure','Series C','San Francisco, CA',true,'Filed a Form D 6 days ago',24,'2026-05-14','Series C',70000000,0,1,'active','sync'),
+      tc('c4','Sable Energy','sableenergy.co','Energy & Utilities','Growth','Houston, TX',false,null,null,'2023-09-18','Series D',250000000,60,6,'active','sync'),
+      tc('c5','Halcyon Robotics','halcyonrobotics.com','Robotics','Seed','Austin, TX',false,null,null,null,null,null,21,4,'active','sync'),
+      tc('c6','Bluebird Studio','bluebird.design','Design services','Bootstrapped','Lisbon, PT',false,null,null,null,null,null,120,9,'active','sync'),
+      tc('c7','Larkspur Bio','larkspur.bio','Biotech','Series A','Cambridge, MA',true,'Hiring a VP Finance',45,'2026-01-10','Series A',9000000,15,3,'active','sync'),
+      // Added by hand, never checked yet — exercises the "added <rel>" label
+      // and the never-synced ("—") signal/checked states.
+      tc('c8','Orchard Freight','orchardfreight.com','Logistics','Series A','Chicago, IL',false,null,null,null,null,null,null,48,'active','user','Watching for a Series B before we reach out.'),
+      tc('c9','Verrata Health','verrata.health','Healthcare','Series A','Boston, MA',false,null,null,null,null,null,45,7,'active','sync'),
+      // [first-party] v1.9 B7 verification row, kept in v1.1.0: an exited
+      // company must sink to the bottom of every sort mode.
+      tc('c10','Fenwick Traders','fenwicktraders.com','Fintech','Series B','Denver, CO',false,null,null,null,null,null,200,720,'exited','sync'),
     ];
     /* [first-party] 15 feed events across six types, three sources and a month
        of history. "Pinegrove Labs" matches no tracked company on purpose, so
        the chip crossfilter's unmatched path is exercised too. The newest
-       signaltwin detection is 2h old → "feed synced 2h ago". */
+       collector detection is 2h old → "feed synced 2h ago". */
     events = [
-      ce('e1','Kestrel Data','fundraise','Kestrel Data raises $70M Series C','Led by Arrowfield, with existing investors following on.','signaltwin','https://example.com/kestrel-series-c',2,2),
-      ce('e2','Northwind Labs','hire','Northwind hires Priya Raman as VP Platform','Previously ran platform engineering at a public infra vendor.','signaltwin','https://example.com/northwind-vp',8,6),
+      ce('e1','Kestrel Data','fundraise','Kestrel Data raises $70M Series C','Led by Arrowfield, with existing investors following on.','edgar','https://example.com/kestrel-series-c',2,2),
+      ce('e2','Northwind Labs','hire','Northwind hires Priya Raman as VP Platform','Previously ran platform engineering at a public infra vendor.','greenhouse','https://example.com/northwind-vp',8,6),
       ce('e3','Northwind Labs','mention','Show HN: Northwind’s new ingest pipeline','412 points, 96 comments.','hn','https://news.ycombinator.com/item?id=1',26,25),
-      ce('e4','Halcyon Robotics','news','Halcyon Robotics cuts 12% of staff',null,'signaltwin','https://example.com/halcyon-cuts',30,28),
-      ce('e5','Meridian Capital','fundraise','Meridian closes Fund IV at $240M','Oversubscribed; same infrastructure-and-data thesis.','signaltwin','https://example.com/meridian-fund-iv',52,50),
-      ce('e6','Kestrel Data','product','Kestrel ships managed CDC connectors',null,'signaltwin',null,74,72),
-      ce('e7','Verrata Health','hire','Verrata Health names new CFO','Joins from a Boston-based payer analytics firm.','signaltwin','https://example.com/verrata-cfo',98,96),
-      ce('e8','Orchard Freight','news','Orchard Freight partners with a national 3PL',null,'signaltwin','https://example.com/orchard-3pl',122,120),
+      ce('e4','Halcyon Robotics','news','Halcyon Robotics cuts 12% of staff',null,'news','https://example.com/halcyon-cuts',30,28),
+      ce('e5','Meridian Capital','fundraise','Meridian closes Fund IV at $240M','Oversubscribed; same infrastructure-and-data thesis.','edgar','https://example.com/meridian-fund-iv',52,50),
+      ce('e6','Kestrel Data','product','Kestrel ships managed CDC connectors',null,'news',null,74,72),
+      ce('e7','Verrata Health','hire','Verrata Health names new CFO','Joins from a Boston-based payer analytics firm.','greenhouse','https://example.com/verrata-cfo',98,96),
+      ce('e8','Orchard Freight','news','Orchard Freight partners with a national 3PL',null,'news','https://example.com/orchard-3pl',122,120),
       ce('e9','Sable Energy','mention','Ask HN: anyone running Sable Energy’s API in production?','63 comments.','hn','https://news.ycombinator.com/item?id=2',146,145),
-      ce('e10','Bluebird Studio','news','Bluebird Studio rebrands and moves upmarket',null,'signaltwin',null,196,194),
-      ce('e11','Northwind Labs','fundraise','Northwind Labs raises $24M Series B','Series B led by Harborline; 18 months of runway added.','signaltwin','https://example.com/northwind-series-b',290,288),
+      ce('e10','Bluebird Studio','news','Bluebird Studio rebrands and moves upmarket',null,'news',null,196,194),
+      ce('e11','Northwind Labs','fundraise','Northwind Labs raises $24M Series B','Series B led by Harborline; 18 months of runway added.','edgar','https://example.com/northwind-series-b',290,288),
       ce('e12','Pinegrove Labs','mention','Pinegrove Labs hits the HN front page','No tracked-company match yet.','hn','https://news.ycombinator.com/item?id=3',338,337),
-      ce('e13','Meridian Capital','hire','Meridian adds two principals',null,'signaltwin',null,434,432),
-      ce('e14','Halcyon Robotics','other','Halcyon Robotics opens an Austin office',null,'signaltwin',null,602,600),
+      ce('e13','Meridian Capital','hire','Meridian adds two principals',null,'greenhouse',null,434,432),
+      ce('e14','Halcyon Robotics','other','Halcyon Robotics opens an Austin office',null,'dns',null,602,600),
       ce('e15','Kestrel Data','mention','Kestrel Data cited in an HN thread on change data capture',null,'hn','https://news.ycombinator.com/item?id=4',722,721),
+      // [first-party] v1.1.0 — every one of the 10 demo companies now has at
+      // least one event; these two round out Larkspur Bio and Fenwick Traders.
+      ce('e16','Larkspur Bio','hire','Larkspur Bio posts a VP Finance role',null,'greenhouse','https://boards.greenhouse.io/larkspurbio',360,360),
+      ce('e17','Fenwick Traders','filing','Fenwick Traders files an 8-K','Item 5.02 — leadership change.','edgar','https://www.sec.gov/cgi-bin/browse-edgar',4800,4800),
     ];
     touches = [
       {id:'t1',person_id:'p1',channel:'meeting',direction:'outbound',occurred_at:daysAgoIso(46),summary:'Coffee to talk through their infra roadmap.',next_step:'Send the design-partner one-pager.'},
@@ -2380,7 +2444,11 @@ body.has-action-bar .people{padding-bottom:76px}
       {id:'k7',title:'Reply to Sam about his portfolio',sphere:'work',priority:'week',status:'done',person_id:'p6',created_at:daysAgoIso(6),completed_at:daysAgoIso(1)},
       {id:'k8',title:'Wish Dana a happy birthday',sphere:'work',priority:'day',status:'open',person_id:'p1',created_at:daysAgoIso(0),completed_at:null},
     ];
-    SETTINGS = Object.assign({}, SETTINGS_DEFAULTS, { weather_label:'New York, NY' });
+    // [first-party] v1.1.0 — demo mode always behaves as "coverage on" (SPEC
+    // §3.2) so the Companies tab renders its third state (the table) rather
+    // than the "turn on coverage" empty state.
+    SETTINGS = Object.assign({}, SETTINGS_DEFAULTS, { weather_label:'New York, NY',
+      coverage_enabled:true, coverage_contact_email:'demo@teplus.local', coverage_batch:8 });
   }
   // Canned weather + calendar so demo mode exercises the Home tab without
   // touching the network (and without any console noise offline).
@@ -3093,7 +3161,6 @@ body.has-action-bar .people{padding-bottom:76px}
   function tcCompareName(a,b){ return String(a.name||'').localeCompare(String(b.name||'')); }
   const TC_SORT_VALUES = {
     name: function(c){ return String(c.name||'').toLowerCase(); },
-    score: function(c){ return c.capital_score == null ? null : Number(c.capital_score); },
     reach: function(c){ return c.reach_out ? 1 : 0; },
     signal: function(c){ return tcTime(c.last_signal_at); },
     fundraise: function(c){ return tcTime(c.last_fundraise_date); },
@@ -3101,7 +3168,7 @@ body.has-action-bar .people{padding-bottom:76px}
   function visibleTracked(){
     const q = TC_SEARCH.toLowerCase();
     const list = tracked.filter(function(c){ return tcMatchesSearch(c, q); });
-    const valueFn = TC_SORT_VALUES[TC_SORT.key] || TC_SORT_VALUES.score;
+    const valueFn = TC_SORT_VALUES[TC_SORT.key] || TC_SORT_VALUES.signal;
     const dir = TC_SORT.dir === -1 ? -1 : 1;
     list.sort(function(a,b){
       // [first-party] v1.9 B7 — exited rows sink below active ones in EVERY
@@ -3128,7 +3195,6 @@ body.has-action-bar .people{padding-bottom:76px}
     {key:null},
     {key:'name', label:'Name'},
     {key:null, label:'Sector'},
-    {key:'score', label:'Capital score'},
     {key:'reach', label:'Reach out'},
     {key:'signal', label:'Last signal'},
     {key:'fundraise', label:'Fundraise'},
@@ -3149,11 +3215,6 @@ body.has-action-bar .people{padding-bottom:76px}
       return '<button type="button" class="col-sort-btn'+(active?' active':'')+'" aria-sort="'+ariaSort+'" onclick="__teplus.tcSetSort(\''+col.key+'\')">'+esc(col.label)+arrow+'</button>';
     }).join('');
   }
-  function scorePill(v){
-    if(v == null || !isFinite(Number(v))) return '<span class="row-dash">—</span>';
-    const n = Math.round(Number(v));
-    return '<span class="warmth '+warmthClass(n)+'">'+esc(n)+'</span>';
-  }
   /* [first-party] v1.6 batch 1 — display-layer normalisation of the raw vendor
      round strings; last_fundraise_round in the DB is untouched. Series A/B/C…,
      Seed, Grant, Corporate, PIPE and anything unrecognised pass through as-is. */
@@ -3172,16 +3233,21 @@ body.has-action-bar .people{padding-bottom:76px}
     if(!raw) return '';
     return ROUND_LABELS.hasOwnProperty(raw) ? ROUND_LABELS[raw] : raw;
   }
-  /* [first-party] v1.9 B9 — display-layer formatting for tracked_companies.
-     stage; the raw enum ('series_a_plus', etc.) must never reach the DOM.
-     'public' and 'series_a_plus' are named exceptions; everything else is
-     underscore→space + title-cased, which is a no-op on an already-human
-     value like "Series B". Used at every place stage renders. */
-  function fmtStage(s){
-    if(!s) return '—';
-    if(s === 'public') return 'Public';
-    if(s === 'series_a_plus') return 'Series A+';
-    return String(s).replace(/_/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+  /* [first-party] v1.1.0 — SPEC §3.5: the app renders reach_out/why_now/
+     reach_out_until, it never recomputes them. The pill shows only while
+     the flag is true and reach_out_until is still in the future; a true
+     row with no reach_out_until (shouldn't happen once the collector has
+     run, but defends against a hand-written row) still shows. */
+  function tcReachOpen(c){
+    if(!c.reach_out) return false;
+    if(c.reach_out_until == null) return true;
+    const t = new Date(c.reach_out_until).getTime();
+    return isFinite(t) ? t > nowMs() : true;
+  }
+  function tcReachPill(c){
+    if(!tcReachOpen(c)) return '';
+    const title = c.why_now ? ' title="'+esc(c.why_now)+'"' : '';
+    return '<span class="reach"'+title+'>Reach out</span>';
   }
   // "Series A · 3mo ago" — blank when there is no fundraise on record.
   function fundraiseCell(c){
@@ -3190,31 +3256,25 @@ body.has-action-bar .people{padding-bottom:76px}
     if(!round && !when) return '';
     return [round, when].filter(Boolean).join(' · ');
   }
-  function deltaHtml(v){
-    if(v == null || !isFinite(Number(v))) return '<span class="row-dash">—</span>';
-    const n = Number(v);
-    if(n === 0) return '<span class="delta">0</span>';
-    const up = n > 0;
-    return '<span class="delta '+(up?'up':'down')+'">'+(up?'▲':'▼')+' '+esc((up?'+':'')+n)+'</span>';
-  }
-  /* [first-party] v1.7 — one-line stat strip that replaced the Live feed
-     card: "N tracked" is always shown; "N reach out" only renders as a
-     button (a convenience that jumps the sort select to "reach") when
-     there's at least one; the sync stamp reuses feedSyncedAt(), blank in
-     demo mode/when nothing has synced yet, same guard the old feed head used. */
+  /* [first-party] v1.1.0 — one-line stat strip: "N tracked" is always shown;
+     "N reach out" only renders as a button (a convenience that jumps the
+     sort select to "reach") when there's at least one; "last check" reads
+     app_settings.coverage_last_run_at — "demo" in demo mode (there is no
+     real collector run to point to), omitted entirely when coverage has
+     never run yet. */
   function renderTcStats(){
     const el = document.getElementById('tc-stat-strip');
     if(!el) return;
-    const reachN = tracked.filter(function(c){ return c.reach_out; }).length;
-    const at = feedSyncedAt();
+    const reachN = tracked.filter(tcReachOpen).length;
     const parts = ['<span>'+fmtN(tracked.length)+' tracked</span>'];
     if(reachN > 0){
       parts.push('<span class="cov-sep">·</span>');
       parts.push('<button type="button" class="cov-stat" onclick="__teplus.tcSortReach()">'+fmtN(reachN)+' reach out</button>');
     }
-    if(at){
+    const lastRun = SETTINGS && SETTINGS.coverage_last_run_at;
+    if(DEMO || lastRun){
       parts.push('<span class="cov-sep">·</span>');
-      parts.push('<span class="feed-sync">Synced '+esc(relTime(at))+'</span>');
+      parts.push('<span class="feed-sync">last check '+(DEMO ? 'demo' : esc(relTime(lastRun)))+'</span>');
     }
     el.innerHTML = parts.join('');
   }
@@ -3224,20 +3284,52 @@ body.has-action-bar .people{padding-bottom:76px}
     if(sel) sel.value = 'reach';
     onTcSort();
   }
+  // [first-party] v1.1.0 — SPEC §3.2: three Companies-tab states. Coverage is
+  // "on" in demo mode unconditionally (loadDemo() stamps SETTINGS that way);
+  // live mode reads app_settings.coverage_enabled, defaulting to off when
+  // the row hasn't loaded yet (SETTINGS null) or is missing the column.
+  function coverageEnabled(){ return DEMO || !!(SETTINGS && SETTINGS.coverage_enabled); }
+  function tcEmptyHtml(){
+    if(!coverageEnabled()){
+      return '<div class="empty-state"><div class="es-title">Company coverage isn’t on yet</div>'+
+        '<div class="es-msg">Ask your AI: turn on company coverage for my Teplus. It runs inside '+
+        'your own database and pulls public signals for the companies you add. '+
+        'Instructions: github.com/teplus-OS/teplus</div></div>';
+    }
+    return '<div class="empty-state"><div class="es-title">Add the companies you cover</div>'+
+      '<div class="es-msg">Paste a list into your AI, or give it a few parameters and let it '+
+      'build one. Or add one here.</div>'+
+      '<div class="f-row"><button class="mini-btn" onclick="__teplus.addMenuCompany()">+ Add company</button></div></div>';
+  }
   function renderTracked(){
     renderTcColHead();   /* [first-party] v1.6 batch 1 — keep sort indicator in sync */
-    renderTcStats();     /* [first-party] v1.7 */
     const wrap = document.getElementById('tc-table');
+    const empty = document.getElementById('tc-empty');
+    const strip = document.getElementById('tc-stat-strip');
+    const head = document.getElementById('tc-col-head');
     if(!wrap) return;
+    // States 1/2: no table, no stat strip — states 3: the usual list.
+    if(!coverageEnabled() || !tracked.length){
+      wrap.style.display = 'none';
+      if(strip) strip.style.display = 'none';
+      if(head) head.style.display = 'none';
+      if(empty){ empty.style.display = ''; empty.innerHTML = tcEmptyHtml(); }
+      const cnt0 = document.getElementById('tc-count');
+      if(cnt0) cnt0.textContent = fmtN(tracked.length);
+      return;
+    }
+    wrap.style.display = '';
+    if(strip) strip.style.display = '';
+    if(head) head.style.display = '';
+    if(empty) empty.style.display = 'none';
+    renderTcStats();     /* [first-party] v1.7 */
     const list = visibleTracked();
     const cnt = document.getElementById('tc-count');
     if(cnt) cnt.textContent = fmtN(list.length);
     const clear = document.getElementById('tc-search-clear');
     if(clear) clear.style.display = TC_SEARCH ? '' : 'none';
     if(!list.length){
-      wrap.innerHTML = TC_SEARCH
-        ? '<div class="empty-state"><div class="es-title">No matches</div><div class="es-msg">No tracked company matches “'+esc(TC_SEARCH)+'”.</div></div>'
-        : '<div class="empty-state"><div class="es-title">No tracked companies synced yet</div><div>Companies appear here once your signal feed syncs them.</div></div>';
+      wrap.innerHTML = '<div class="empty-state"><div class="es-title">No matches</div><div class="es-msg">No tracked company matches “'+esc(TC_SEARCH)+'”.</div></div>';
       return;
     }
     if(TC_SHOWN < PAGE) TC_SHOWN = PAGE;
@@ -3264,30 +3356,38 @@ body.has-action-bar .people{padding-bottom:76px}
         '<div class="row-caret"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></div>'+
         '<div class="row-name"><div class="row-name-main">'+esc(c.name)+exitedChip+'</div>'+dom+'</div>'+
         '<div class="row-plain">'+(c.sector ? esc(c.sector) : '<span class="row-dash">—</span>')+'</div>'+
-        '<div>'+scorePill(c.capital_score)+'</div>'+
-        '<div>'+(c.reach_out ? '<span class="reach">Reach out</span>' : '')+'</div>'+
+        '<div>'+tcReachPill(c)+'</div>'+
         '<div class="row-last">'+esc(c.last_signal_at ? relTime(c.last_signal_at) : 'never')+'</div>'+
         '<div class="row-plain">'+fr+'</div>'+
       '</div>'+
       '<div class="row-detail"></div>'+
     '</div>';
   }
+  // [first-party] v1.1.0 — "added <rel>" when a person typed the company in
+  // (added_by='user'), "synced <rel>" once an external sync has touched it
+  // (added_by='sync'). Both read synced_at — the column's meaning didn't
+  // change, only which verb fronts it (SPEC §3.3/§3.4).
+  function tcAddedLine(c){
+    const verb = c.added_by === 'user' ? 'added' : 'synced';
+    return verb+' '+relTimeFine(c.synced_at);
+  }
+  const TC_STAGE_OPTIONS = ['Seed','Series A','Series B','Series C+','Growth','Public','Other'];
   function tcDetailHtml(c){
+    const id = esc(c.id);
     const dl = [];
-    if(c.hq_location) dl.push('<dt>HQ</dt><dd>'+esc(c.hq_location)+'</dd>');
-    if(c.stage) dl.push('<dt>Stage</dt><dd>'+esc(fmtStage(c.stage))+'</dd>');   /* [first-party] v1.9 B9 */
-    if(c.coverage_tier) dl.push('<dt>Coverage</dt><dd>'+esc(c.coverage_tier)+'</dd>');
-    if(c.score_state) dl.push('<dt>Score state</dt><dd>'+esc(c.score_state)+'</dd>');
-    dl.push('<dt>7-day delta</dt><dd>'+deltaHtml(c.score_delta_7d)+'</dd>');
-    // [first-party] v1.9 B8 — reach-out reason: the latest loaded signal for
-    // this company, or a quiet fallback when no event has synced yet.
-    if(c.reach_out){
-      const latest = eventsForKeys([normName(c.name)], c.id)[0];
-      const why = latest
-        ? esc(latest.title || '') + ' · ' + esc(relTime(evIso(latest)))
-        : 'flagged by signal scoring';
-      dl.push('<dt>Reach out</dt><dd>'+why+'</dd>');
-    }
+    dl.push('<dt>Name</dt><dd class="pii dd-edit" onclick="event.stopPropagation();__teplus.editTcField(\''+id+'\',this,\'name\')">'+esc(c.name)+'</dd>');
+    dl.push('<dt>Domain</dt><dd class="pii dd-edit" onclick="event.stopPropagation();__teplus.editTcField(\''+id+'\',this,\'domain\')">'+
+      (c.domain ? esc(normDomain(c.domain) || c.domain) : '—')+'</dd>');
+    dl.push('<dt>Sector</dt><dd class="dd-edit" onclick="event.stopPropagation();__teplus.editTcField(\''+id+'\',this,\'sector\')">'+(c.sector ? esc(c.sector) : '—')+'</dd>');
+    dl.push('<dt>Stage</dt><dd><select class="sel" id="tcstage-'+id+'" onclick="event.stopPropagation()" onchange="event.stopPropagation();__teplus.saveTcStage(\''+id+'\')">'+
+      '<option value=""'+(!c.stage?' selected':'')+'>—</option>'+
+      TC_STAGE_OPTIONS.map(function(s){ return '<option value="'+esc(s)+'"'+(c.stage===s?' selected':'')+'>'+esc(s)+'</option>'; }).join('')+
+      '</select></dd>');
+    dl.push('<dt>HQ</dt><dd class="dd-edit" onclick="event.stopPropagation();__teplus.editTcField(\''+id+'\',this,\'hq_location\')">'+(c.hq_location ? esc(c.hq_location) : '—')+'</dd>');
+    dl.push('<dt>Notes</dt><dd class="dd-edit" onclick="event.stopPropagation();__teplus.editTcField(\''+id+'\',this,\'notes\')">'+(c.notes ? esc(c.notes) : '—')+'</dd>');
+    // [first-party] v1.1.0 — SPEC §3.5: rendered straight off the collector's
+    // columns, never recomputed here.
+    if(tcReachOpen(c)) dl.push('<dt>Reach out</dt><dd>Why now: '+esc(c.why_now || '—')+'</dd>');
     if(c.last_fundraise_date || c.last_fundraise_round || c.last_fundraise_amount_usd != null){
       const parts = [];
       if(c.last_fundraise_round) parts.push(esc(normRound(c.last_fundraise_round)));
@@ -3295,15 +3395,10 @@ body.has-action-bar .people{padding-bottom:76px}
       if(c.last_fundraise_date) parts.push(esc(relTime(c.last_fundraise_date)));
       dl.push('<dt>Last raise</dt><dd>'+parts.join(' · ')+'</dd>');
     }
-    // Domain is the one identifying field here; sector/score/signal stay legible.
-    // [first-party] v1.5 batch 3 — working link, was plain text.
-    if(c.domain){
-      const d = normDomain(c.domain) || c.domain;
-      dl.push('<dt>Domain</dt><dd class="pii"><a href="https://'+esc(d)+'" target="_blank" rel="noopener">'+esc(d)+' ↗</a></dd>');
-    }
+    dl.push('<dt>Last signal</dt><dd>'+(c.last_signal_at ? esc(relTime(c.last_signal_at)) : '—')+'</dd>');
     // [first-party] v1.5 batch 3 — org cross-link (item 4). LinkedIn: no such
-    // field exists on tracked_companies (migration 004) — nothing to render,
-    // deliberately not invented.
+    // field exists on tracked_companies — nothing to render, deliberately not
+    // invented.
     const linkedOrg = orgForTracked(c);
     // [first-party] v1.6 batch 2 — untiered orgs no longer have a row on the
     // Firms tab (see visibleOrgs()), so there is nothing to jump to; only
@@ -3338,8 +3433,8 @@ body.has-action-bar .people{padding-bottom:76px}
         // panel's other quiet action (the domain link above lives in the dl;
         // this is the one standalone action the panel has).
         '<div class="panel-acts"><a href="javascript:void(0)" class="panel-link" onclick="event.stopPropagation();__teplus.toggleTcExited(\''+esc(c.id)+'\')">'+
-          (c.status === 'exited' ? 'Mark active' : 'Mark exited')+'</a></div>'+
-        '<div class="panel-foot">Synced '+esc(relTimeFine(c.synced_at))+' · one-way copy from your signal feed</div>'+
+          (c.status === 'exited' ? 'Restore' : 'Archive')+'</a></div>'+
+        '<div class="panel-foot">'+esc(tcAddedLine(c))+'</div>'+
       '</div>'+
       '<div class="panel">'+
         '<div class="panel-title">People you know here <span class="panel-n">'+esc(matches.length)+'</span></div>'+
@@ -3383,9 +3478,45 @@ body.has-action-bar .people{padding-bottom:76px}
     c.status = next;
     renderTracked();
   }
+  /* [first-party] v1.1.0 — SPEC §3.3 inline edits, expanded row: name,
+     domain, sector, HQ, notes are plain text (startDDEdit, same helper the
+     Network tab's Title/Firm edits use); domain gets the same normalization
+     the Add-company modal applies. Stage is the one <select>, saved by
+     saveTcStage below (same shape as Firms' saveOrgKind). */
+  function editTcField(id, dd, field){
+    const c = tracked.find(function(x){ return String(x.id) === String(id); });
+    if(!c) return;
+    const raw = field === 'domain' ? (normDomain(c.domain) || c.domain || '') : (c[field] || '');
+    startDDEdit(dd, raw, function(v, dd2, oldHtml){ saveTcField(id, field, v, dd2, oldHtml); });
+  }
+  async function saveTcField(id, field, v, dd, oldHtml){
+    const c = tracked.find(function(x){ return String(x.id) === String(id); });
+    if(!c) return;
+    let value = v || null;
+    if(field === 'domain') value = value ? normDomain(value) : null;
+    if(field === 'name' && !value){ dd.innerHTML = oldHtml; showToast('Name is required'); return; }
+    if(!DEMO){
+      const { error } = await SB.from('tracked_companies').update({[field]: value}).eq('id', id);
+      if(error){ console.error('[Teplus] save company '+field+':', error.message); showToast('Could not save'); dd.innerHTML = oldHtml; return; }
+    }
+    c[field] = value;
+    renderTracked();
+  }
+  async function saveTcStage(id){
+    const el = document.getElementById('tcstage-'+id);
+    const v = (el && el.value) || null;
+    if(!DEMO){
+      const { error } = await SB.from('tracked_companies').update({stage:v}).eq('id', id);
+      if(error){ console.error('[Teplus] save company stage:', error.message); showToast('Could not save'); return; }
+    }
+    const c = tracked.find(function(x){ return String(x.id) === String(id); });
+    if(c) c.stage = v;
+    flashSelect(el);
+    renderTracked();
+  }
   function onTcSort(){
     const sel = document.getElementById('tc-sort-sel');
-    const key = (sel && sel.value) || 'score';
+    const key = (sel && sel.value) || 'signal';
     TC_SORT = {key:key, dir:TC_SORT_DEFAULT_DIR[key] || 1};
     TC_SHOWN = PAGE;
     renderTracked();
@@ -3431,7 +3562,7 @@ body.has-action-bar .people{padding-bottom:76px}
      ── the signal engine → company_events mapping [module-fed; documented here, run by
         the sync script, never by this file] ─────────────────────────────────
         signals.id                 → external_id      (idempotent upsert key)
-        'signaltwin'               → source
+        'edgar' | 'news' | 'greenhouse' | 'dns' → source
         signals.signal_type        → event_type — mapped by the sync script to
                                      hire|fundraise|filing|news|product|mention;
                                      anything unrecognised lands as 'other'.
@@ -3813,7 +3944,7 @@ body.has-action-bar .people{padding-bottom:76px}
       '</select></dd>');
     const tc = trackedForOrg(o);
     if(tc){
-      dl.push('<dt>Capital score</dt><dd>'+scorePill(tc.capital_score)+' · '+
+      dl.push('<dt>Coverage</dt><dd>'+
         '<a href="javascript:void(0)" onclick="event.stopPropagation();__teplus.gotoTrackedCompany(\''+esc(tc.id)+'\')">View in Companies →</a></dd>');
     }
 
@@ -4760,6 +4891,82 @@ body.has-action-bar .people{padding-bottom:76px}
     }
   }
 
+  /* ───── Company coverage settings (F5) ───── [first-party] v1.1.0 SPEC §3.7
+     Status, contact email (required to enable — sent to the SEC per their
+     fair access policy), batch size (2–20, default 8), "Last run <rel>", and
+     a link to the README section. The toggle is the only runtime switch;
+     the cron schedule itself is created once by the setup SQL. Demo mode
+     shows the block read-only (coverage is always "on" in demo, and there
+     is no real database row to write to). */
+  function renderCoverageSettings(){
+    const el = document.getElementById('coverage-body');
+    if(!el) return;
+    const s = SETTINGS || SETTINGS_DEFAULTS;
+    const on = coverageEnabled();
+    const lastRun = s.coverage_last_run_at;
+    el.innerHTML =
+      '<div class="f-row" style="justify-content:space-between;align-items:center">'+
+        '<span>Status: <strong>'+(on ? 'On' : 'Off')+'</strong></span>'+
+        '<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="cov-toggle" '+(on?'checked':'')+(DEMO?' disabled':'')+' onchange="__teplus.toggleCoverage()"/> Enabled</label>'+
+      '</div>'+
+      '<div class="hint-line">The contact email is sent to the SEC in every EDGAR request, as their fair access policy requires.</div>'+
+      '<div class="f-row"><input class="f-input" id="cov-email" type="email" placeholder="you@example.com" autocomplete="off" value="'+esc(s.coverage_contact_email || '')+'" '+(DEMO?'disabled':'')+'/></div>'+
+      '<div class="f-row"><button class="mini-btn ghost" id="cov-email-save" onclick="__teplus.saveCoverageEmail()" '+(DEMO?'disabled':'')+'>Save email</button></div>'+
+      '<div class="f-row" style="justify-content:space-between;align-items:center">'+
+        '<span>Batch size</span>'+
+        '<input class="f-input" id="cov-batch" type="number" min="2" max="20" style="width:64px" value="'+esc(s.coverage_batch != null ? s.coverage_batch : 8)+'" '+(DEMO?'disabled':'')+' onchange="__teplus.saveCoverageBatch()"/>'+
+      '</div>'+
+      '<div class="hint-line">Last run '+(DEMO ? 'demo' : (lastRun ? esc(relTime(lastRun)) : 'never'))+' · '+
+      '<a href="https://github.com/teplus-OS/teplus#your-companies" target="_blank" rel="noopener">Setup instructions →</a></div>';
+  }
+  async function toggleCoverage(){
+    if(DEMO) return;
+    const el = document.getElementById('cov-toggle');
+    const wantOn = !!(el && el.checked);
+    if(wantOn && !(SETTINGS && SETTINGS.coverage_contact_email)){
+      if(el) el.checked = false;
+      showToast('Add a contact email before turning coverage on');
+      return;
+    }
+    try {
+      await saveSettings({ coverage_enabled: wantOn });
+    } catch(e){
+      if(el) el.checked = !wantOn;
+      showToast('Could not save');
+      return;
+    }
+    renderCoverageSettings();
+    renderTracked();
+    renderHomeNews();
+  }
+  async function saveCoverageEmail(){
+    if(DEMO) return;
+    const v = val('cov-email');
+    const btn = document.getElementById('cov-email-save');
+    if(btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+      await saveSettings({ coverage_contact_email: v || null });
+      showToast('Saved');
+    } catch(e){
+      showToast('Could not save');
+    } finally {
+      if(btn){ btn.disabled = false; btn.textContent = 'Save email'; }
+    }
+  }
+  async function saveCoverageBatch(){
+    if(DEMO) return;
+    const el = document.getElementById('cov-batch');
+    let n = Number(el && el.value);
+    if(!isFinite(n)) n = 8;
+    n = Math.max(2, Math.min(20, Math.round(n)));
+    if(el) el.value = n;
+    try {
+      await saveSettings({ coverage_batch: n });
+    } catch(e){
+      showToast('Could not save');
+    }
+  }
+
   /* ───── week-view calendar popup ───── [first-party] v1.12 B5
      Opens off the Today section's "Open calendar →" link. Reads the same
      CAL.events the rail does — no separate fetch. WEEK_POP_OFFSET is an
@@ -5417,7 +5624,12 @@ body.has-action-bar .people{padding-bottom:76px}
     if(sync){ const at = feedSyncedAt(); sync.textContent = at ? ('Synced ' + relTime(at)) : ''; }
     const filtered = newsTypeFiltered().sort(function(a,b){ return evTime(b) - evTime(a); });
     if(!filtered.length){
-      body.innerHTML = '<div class="empty-note">Feed fills as collectors run.</div>';
+      // [first-party] v1.1.0 — SPEC §3.6: the copy now depends on whether
+      // coverage is even on, since an off collector can never fill this feed.
+      const msg = coverageEnabled()
+        ? 'No updates yet. The first check runs within 15 minutes of adding a company.'
+        : 'Turn on company coverage to see updates here.';
+      body.innerHTML = '<div class="empty-note">'+esc(msg)+'</div>';
       if(more) more.innerHTML = '';
       return;
     }
@@ -5517,6 +5729,7 @@ body.has-action-bar .people{padding-bottom:76px}
     renderHomeHead(); renderWeather(); renderCalendar();
     renderReachOut(); renderHomeTasks(); renderNextSteps();
     renderHomeNews();                                /* [first-party] A4 */
+    renderCoverageSettings();                        /* [first-party] v1.1.0 */
   }
 
   function renderAll(){
@@ -6415,6 +6628,65 @@ body.has-action-bar .people{padding-bottom:76px}
   };
   function gotoOrgFromFirmModal(id){ closeAddFirm(); gotoOrg(id); }
 
+  /* ───── Add company modal ───── [first-party] v1.1.0 — SPEC §3.3
+     Name + domain required; domain is normalized (strip protocol, www.,
+     trailing slash, lowercase) with normDomain before either the duplicate
+     check or the insert. A duplicate domain for this user blocks the insert
+     with a toast, same shape every other duplicate check in the app uses. */
+  window.openAddCompany = function(){
+    document.getElementById('company-modal').classList.add('open');
+    const err = document.getElementById('nc-err'); if(err){ err.style.display='none'; err.textContent=''; }
+    setTimeout(()=>{const el=document.getElementById('nc-name'); if(el) el.focus();},50);
+  };
+  window.closeAddCompany = function(){
+    document.getElementById('company-modal').classList.remove('open');
+  };
+  function addMenuCompany(){ closeAddMenu(); openAddCompany(); }
+  let NC_SUBMITTING = false;
+  window.submitAddCompany = async function(){
+    if(NC_SUBMITTING) return;
+    NC_SUBMITTING = true;
+    try {
+      const name = val('nc-name');
+      const domain = normDomain(val('nc-domain'));
+      const err = document.getElementById('nc-err');
+      err.style.display = 'none'; err.textContent = '';
+      if(!name){ err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
+      if(!domain){ err.textContent = 'A valid domain is required.'; err.style.display = 'block'; return; }
+      try {
+        if(DEMO){
+          const dupe = tracked.find(function(x){ return normDomain(x.domain) === domain; });
+          if(dupe){ showToast('Already tracking '+dupe.name); return; }
+        } else {
+          const { data: ex, error: exErr } = await SB.from('tracked_companies').select('id,name').eq('domain', domain).limit(1);
+          if(exErr) throw exErr;
+          if(ex && ex.length){ showToast('Already tracking '+ex[0].name); return; }
+        }
+        const patch = { name:name, domain:domain, sector:val('nc-sector')||null, stage:val('nc-stage')||null,
+          hq_location:val('nc-hq')||null, notes:val('nc-notes')||null, added_by:'user', status:'active' };
+        if(DEMO){
+          tracked.push(Object.assign({ id:'c'+nowMs(), st_id:null, reach_out:false, why_now:null, reach_out_until:null,
+            last_fundraise_date:null, last_fundraise_round:null, last_fundraise_amount_usd:null,
+            last_signal_at:null, checked_at:null, synced_at:new Date().toISOString() }, patch));
+        } else {
+          const { error } = await SB.from('tracked_companies').insert(patch);
+          if(error) throw error;
+          await loadLive();
+        }
+        closeAddCompany();
+        ['nc-name','nc-domain','nc-sector','nc-hq','nc-notes'].forEach(function(i){ const e=document.getElementById(i); if(e) e.value=''; });
+        const ssel = document.getElementById('nc-stage'); if(ssel) ssel.value = '';
+        renderTracked();
+        showToast('Company added');
+      } catch(e){
+        err.textContent = (e && e.message) || 'Could not add company.';
+        err.style.display = 'block';
+      }
+    } finally {
+      NC_SUBMITTING = false;
+    }
+  };
+
   /* ───── org typeahead (Add-person modal) ───── [first-party] v1.5 batch 5 (F24) */
   function orgAutocompleteMatches(q){
     const query = String(q||'').trim().toLowerCase();
@@ -6700,6 +6972,7 @@ body.has-action-bar .people{padding-bottom:76px}
     { type:'cmd', title:'Go to Network', run:function(){ switchTab('network', true); } },
     { type:'cmd', title:'Add person', run:function(){ openAddPerson(); } },
     { type:'cmd', title:'Add firm', run:function(){ openAddFirm(); } },   /* [first-party] v1.9.2 P5 */
+    { type:'cmd', title:'Add company', run:function(){ openAddCompany(); } },   /* [first-party] v1.1.0 */
     { type:'cmd', title:'Open to-dos', run:function(){ openDrawer(); } },
     { type:'cmd', title:'Toggle privacy mode', run:function(){ togglePrivacy(); } },
   ];
@@ -6820,6 +7093,8 @@ body.has-action-bar .people{padding-bottom:76px}
        expand, and the cross-links between them */
     toggleOrg, toggleOrgBuild, toggleOrgNurture, gotoTrackedCompany,
     editLoc, saveIcs, togglePrivacy,
+    /* [first-party] v1.1.0 — Company coverage settings block (SPEC §3.7) */
+    toggleCoverage, saveCoverageEmail, saveCoverageBatch,
     reloadWeather: function(){ WX = {state:'loading'}; renderWeather(); loadWeather(); },
     reloadCalendar: loadCalendar,
     /* [first-party] v1.5 batch 4 — merged to-dos card, delete/undo,
@@ -6852,7 +7127,10 @@ body.has-action-bar .people{padding-bottom:76px}
     openAddPersonForOrg,
     /* [first-party] v1.9 B6 — "+ Add ▾" menu + the new Add-firm modal */
     toggleAddMenu, addMenuPerson, addMenuFirm, gotoOrgFromFirmModal,
-    /* [first-party] v1.9 B7 — Companies "Mark exited"/"Mark active" toggle */
+    /* [first-party] v1.1.0 — Add-company modal + Companies inline edits */
+    addMenuCompany, editTcField, saveTcStage,
+    /* [first-party] v1.9 B7 — Companies Archive/Restore toggle (was "Mark
+       exited"/"Mark active") */
     toggleTcExited,
     /* [first-party] v1.10 R3 — Log-a-touch palette v2 (replaces the
        v1.9.2 quick-log widget AND the reach-row Log popover) */
@@ -6884,7 +7162,7 @@ body.has-action-bar .people{padding-bottom:76px}
     // [first-party] v1.12 B5 — same fallback net for the week-view popup.
     // [first-party] v1.13 E1/E3 — same fallback net for the text-size
     // popover and the version card.
-    if(e.key==='Escape'){ closePalette(); closeDrawer(); closeAddPerson(); closeAddFirm(); closeAddMenu(); closeLogTouch(); closeWeekPop(); closeTextSizePop(); closeVersionCard(); return; }
+    if(e.key==='Escape'){ closePalette(); closeDrawer(); closeAddPerson(); closeAddFirm(); closeAddCompany(); closeAddMenu(); closeLogTouch(); closeWeekPop(); closeTextSizePop(); closeVersionCard(); return; }
     if((e.key==='h' || e.key==='H') && !e.ctrlKey && !e.metaKey && !e.altKey && !isTypingTarget(e.target)){
       togglePrivacy();
     }
@@ -6945,6 +7223,10 @@ body.has-action-bar .people{padding-bottom:76px}
     wireSearch(); wireTcSearch(); wireOrgSearch();   /* [first-party] */
     wireOrgAutocomplete(); wireCmdPalette();         /* [first-party] v1.5 batch 5 */
     wireLogTouch();                                   /* [first-party] v1.10 R3 */
+    // [first-party] v1.1.0 — the Companies tab's coverage-off/zero-company
+    // states read SETTINGS.coverage_enabled, so it must be loaded before the
+    // first renderAll() rather than only inside bootHomeWidgets() below.
+    await loadSettings();
     renderAll();
     bootHomeWidgets();
   })();

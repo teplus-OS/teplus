@@ -1,87 +1,135 @@
 # Teplus
 
 A free, open source relationship manager for investors. It tracks your
-coverage universe and your referral network, tells you who's going cold, and
-runs entirely on your own private infrastructure — your data never touches
-anyone else's servers.
+network and the companies you cover. It runs on your own private
+infrastructure.
 
 MIT licensed. © 2026 RS Standard LLC.
 
-## Deploy it with Claude (~20 minutes)
+## Deploy it with your AI
 
-The fastest way to set up Teplus is to let an AI assistant do it:
+Paste this prompt into an AI assistant:
 
-1. Open a new conversation with Claude.
-2. Paste this repository's link and say: **"Deploy this for me."**
-3. Claude will walk you through creating a free Supabase project, running the
-   schema, deploying the app to Vercel, and signing in at your own URL.
+> Deploy this for me: github.com/teplus-OS/teplus. I'm not technical. Set up
+> Teplus step by step, explain each step before I do it, and don't move on
+> until it works. Host it on Vercel's free tier so I get a URL I can
+> bookmark. Then turn on company coverage.
 
-You'll need: a Supabase account and a Vercel account (both free tiers are
-fine) and about 20 minutes.
+Time: about an hour. Around 20 minutes of that is you: creating two free
+accounts, approving a few steps, and pasting two keys. Your AI does the
+rest.
 
-If you're the AI doing the deploying: read `docs/WHAT-GETS-SET-UP.md` first —
-it maps every piece with a one-liner on what it does and why it matters, so
-you can explain each step before the user takes it.
+If you're the AI doing this: read `docs/WHAT-GETS-SET-UP.md` first.
 
-## Try it first (demo mode)
+## Try it first
 
-Open `app/index.html` in a browser with no configuration at all and Teplus
-runs in demo mode with sample people, touches, and tasks, so you can see the
-whole UI before creating anything.
+Open `app/index.html` in a browser with no setup at all. Teplus runs in
+demo mode with sample data, so you can see the whole thing before you
+create anything.
 
 ## Manual setup
 
 1. Create a Supabase project at supabase.com.
-2. In the SQL editor, run `supabase/schema.sql` in full. This creates every
-   table AND the Row Level Security policies — do not skip it or run it
-   partially. (The security model is documented at the top of that file.)
-3. In Authentication settings, disable public signups (each deployment is
-   personal — you are the only user) and enable leaked password protection.
-4. Create your account: Authentication → Add user (email + password).
-5. Copy `app/supabase-config.example.js` to `app/supabase-config.js` and fill
-   in your project URL and publishable key (Project Settings → API). The real
-   config file is gitignored so your values stay local.
-6. Deploy the `app/` folder to Vercel (free Hobby tier): import this repo
-   at vercel.com, set the project's root directory to `app`, and add
-   `supabase-config.js` there before deploying (it is gitignored, so it
-   must be added to the deployment, for example as a file in the `app/`
-   folder of your own fork or via a build step). Vercel picks up
-   `app/vercel.json` for the security headers and gives you a URL to
-   bookmark. Any other static host works too, and for a quick local look
-   you can run `python3 -m http.server` from `app/`.
-7. Open your URL and sign in.
+2. In the SQL editor, run `supabase/schema.sql` in full.
+3. In Authentication settings, disable public signups and enable leaked
+   password protection. Then add your own user under Authentication.
+4. Copy `app/supabase-config.example.js` to `app/supabase-config.js` and
+   fill in your project URL and publishable key.
+5. Deploy the `app` folder with the Vercel CLI: `npm i -g vercel`, then
+   `vercel --prod` from inside `app/`. The CLI uploads the folder as it is
+   on your machine, so your `supabase-config.js` goes with it while staying
+   out of git. `app/vercel.json` adds the security headers.
+6. Open your URL and sign in.
 
-Optional: the calendar widget needs the `calendar-feed` edge function
-deployed (`supabase functions deploy calendar-feed`) and your calendar's
-secret ICS URL saved in Settings.
+## Your people
 
-## Customizing (the fun part)
+Bring a spreadsheet. Any contact export or tracker you already have works.
 
-Teplus is a single HTML file. That means you can change it with a prompt:
-open the file in a Claude conversation and describe what you want — a new
-field, a different cadence, a view your workflow needs. This is a supported,
-intended way to use it.
+Bring a LinkedIn export. Your connections file becomes your starting
+network.
 
-## Signals (optional, bring your own)
+Either way, the setup guide has three prompts for your AI: cutting the
+list down, scoring each person key, standard, or annual and each firm A,
+B, or C, and spreading out your check-in cadences so they don't all land
+on the same day.
 
-The Companies tab and the Home live feed read from two tables
-(`tracked_companies` and `company_events`) that ship empty. Teplus includes
-no data collector; if you have your own process that finds company news,
-write rows into those tables and the app picks them up. Everything else
-works fully without them.
+Time: 30 to 60 minutes of your decisions.
+
+## Your companies
+
+The Companies tab shows updates on the companies you cover, the people you
+know there, and a reach out flag with a plain reason why.
+
+### Turn on coverage
+
+1. `supabase secrets set COVERAGE_SECRET=<a random string>`
+2. `supabase functions deploy coverage --no-verify-jwt`
+3. Run `supabase/coverage-schedule.sql` with the two placeholders filled in.
+4. In Teplus, set your contact email and switch coverage on.
+
+### Build your list
+
+Paste a list of companies to your AI and have it load them in.
+
+Or give your AI a few parameters and let it build a list, review it in
+batches, and load it in.
+
+You can also add a company by hand any time with Add company in the app.
+
+### What it pulls
+
+- SEC filings: Form D, 8-K, S-1
+- An investors page appearing on the company's site
+- Job postings from public boards: finance, IR, ERP, and senior roles
+- News mentions
+- Mail and DNS provider changes
+
+### What Reach out means
+
+| Trigger | Window | Why now |
+|---|---|---|
+| Form D, S-1, financing 8-K, fundraise news | 30 days | "Filed a Form D 6 days ago" etc. |
+| Leadership-change 8-K, senior arrival, exec departure | 45 days | "New CFO announced 12 days ago" etc. |
+| Investors page goes live | 60 days | "Investors page went live 30 days ago" |
+| Finance/IR or ERP hiring | 60 days | "Hiring a VP Finance 3 days ago" |
+
+No matching event in its window means no flag.
+
+### Limits on the free plan
+
+Keep it to a few hundred companies. Checks run in batches every 15
+minutes. Open Teplus at least weekly so your project doesn't pause. The
+SEC requires your email in requests, so coverage asks for it.
+
+### Keep-alive
+
+A second scheduled job keeps your Supabase project from pausing, even if
+coverage itself is off or broken. To tell it is working, open the
+Supabase table editor and check that `app_settings.keepalive_at` moves
+forward every week. If it stops, the
+fix notes are in `supabase/coverage-schedule.sql`.
+
+## It's yours
+
+Teplus is one file. Change it with a prompt, and try the change before you
+commit to it. If a change is good for everyone, email r@agran.co and it
+can go into the next version.
+
+To update, tell your AI: "update my Teplus to the latest version from the
+repo." Your data is untouched.
 
 ## Your data and privacy
 
-Teplus is self hosted: you run your own database, and you are the data
-controller for whatever you put in it. You are responsible for complying
-with privacy law applicable to you and your contacts. Teplus was designed
-with US located contacts and minimal personal data in mind.
+Teplus is self hosted. You are the data controller for what you put in it.
+It was designed for US located contacts and minimal personal data.
+Coverage only fetches public sources: Google News RSS as a public feed,
+and SEC EDGAR under its fair access policy.
 
 ## What it is not
 
-There is no hosted version, no telemetry, no account with us, and no signal
-or news engine in this repository.
+There is no hosted version, no telemetry, and no account with us. There is
+no scoring or prediction in this repository.
 
 ---
 
-Built by Ricky. Questions or access to updates: r@agran.co
+Built by Ricky. Questions: r@agran.co
