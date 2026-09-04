@@ -48,8 +48,10 @@ contacts xlsx and any secret can never ride along by accident.
 - [x] Final secrets sweep: no keys, tokens, project refs, or personal
       identifiers in any shipped file (r@agran.co in README is intentional)
 - [x] git history clean (fresh init, scaffold + strip commits only)
-- [ ] Naive-user deploy test: fresh Claude conversation, paste repo link,
-      "deploy this for me", end to end (Ricky runs this)
+- [x] Naive-user deploy test: fresh Claude conversation, paste repo link,
+      "deploy this for me", end to end (Ricky runs this) — 2026-09-04, Cowork
+      cloud session, burner account, 1h11m, everything worked, 12 doc/script
+      findings fixed in v1.1.3
 - [ ] Docs match check (after the smoke test AND the naive-user test, before
       the design-partner email): (a) setup guide reflects what actually
       happened in the naive-user run — prompt URL github.com/teplus-OS/teplus,
@@ -83,3 +85,13 @@ contacts xlsx and any secret can never ride along by accident.
 - A company's first coverage check is a baseline, not a flagged event.
 - News matching needs a whole-word match plus an earnings exclusion, or it over-fires.
 - The config placeholder check must be shape-based (does it look like a real key), not a literal string match.
+
+### Learned in the naive user test
+- Project URL is under Data API, keys under API keys.
+- Users will paste the database password unless told not to.
+- Cloud assistants have no browser, so browser logins must be replaced by tokens.
+- The last .vercel.app in Vercel's output is the protected per-deployment URL; the Aliased line is the public one.
+- The management API can run SQL for the script but returns 403 without a User-Agent.
+- The prompt's last sentence is where an assistant stops, so it must name the whole job.
+- A random start date draw makes a 17 person week; spread evenly instead.
+- Headcount filters are estimates from free sources.

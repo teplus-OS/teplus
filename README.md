@@ -13,14 +13,15 @@ Paste this prompt into an AI assistant:
 > Deploy this for me: github.com/teplus-OS/teplus. I'm not technical. Set up
 > Teplus step by step, explain each step before I do it, and don't move on
 > until it works. Host it on Vercel's free tier so I get a URL I can
-> bookmark. Then turn on company coverage.
+> bookmark. Then turn on company coverage, then help me load my contacts and
+> build my coverage list, following docs/SETUP-GUIDE.md in the repo.
 
-Time: about an hour with an assistant that can run commands (Claude
-Code, Cowork with your computer linked, ChatGPT agent mode); around 20
-minutes of that is you. With a regular chat, where you paste the
-commands yourself, it's about 90 minutes, 45 of it you.
+Time: setup is about an hour, 20 minutes of it is you. Then 30 to 60
+minutes of your decisions for people and companies. Regular chat: add
+about 30 minutes.
 
-If you're the AI doing this: read `docs/WHAT-GETS-SET-UP.md` first.
+If you're the AI doing this: read `docs/WHAT-GETS-SET-UP.md` first, then
+`docs/SETUP-GUIDE.md` for the people and companies steps.
 
 ## Try it first
 
@@ -30,36 +31,61 @@ create anything.
 
 ## Setup
 
-Do these four dashboard steps first, by hand, in the Supabase dashboard:
+Do these four dashboard steps first, by hand, in the Supabase dashboard
+(about 10 minutes):
 
-1. Create a Supabase project at supabase.com.
-2. In the SQL editor, run `supabase/schema.sql` in full.
+1. Create a Supabase project at supabase.com. Save the database password
+   somewhere safe; Teplus never needs it again.
+2. In the SQL editor, click New query, paste all of `supabase/schema.sql`,
+   and press Run. It creates the tables and the security policies (RLS)
+   in one go; there is nothing else to click.
 3. In Authentication → Sign In / Providers, turn off "Allow new users to
    sign up", and under the Email provider set the minimum password length
-   to 12. (Leaked password protection is a Pro plan feature; this is the
-   free-plan equivalent.)
-4. Add your own user under Authentication → Users → Create new user, with
-   "Auto confirm" checked.
+   to 12, then press Save at the bottom. (Leaked password protection is
+   a Pro plan feature; this is the free-plan equivalent.)
+4. Add your own user under Authentication → Users → Add user → Create new
+   user, with "Auto Confirm User" ticked. This email and password are
+   your Teplus login.
 
 Then finish the rest one of two ways.
 
 ### Path A: an assistant that can run commands
 
-Claude Code, Cowork with your computer linked, or ChatGPT agent mode can
-run:
+Claude Code, Cowork, ChatGPT agent mode, and cloud assistants with no
+browser can all do this.
+
+First, make two tokens so your AI can work without a browser login (name
+both `teplus-setup`, and delete both when setup is done):
+
+- Supabase: supabase.com/dashboard/account/tokens → Generate new token.
+- Vercel: vercel.com/account/tokens → Create.
+
+Give your AI five things: the project ref (the short code in your
+project's URL), the Project URL (Project Settings → Data API), the
+publishable key (Project Settings → API keys), and the two tokens. Never
+give it the database password or the secret key; Path A never uses them.
+
+Have connectors? If your assistant has Supabase and Vercel connectors
+(Claude's Cowork does), connect them to the account you're using for
+Teplus and skip the tokens. Your AI can then create the project and run
+the schema itself; it will tell you which clicks are still yours.
+
+Then have it run, from the repo root:
 
 ```
-PROJECT_REF=... SUPABASE_URL=... PUBLISHABLE_KEY=... bash setup.sh
+SUPABASE_ACCESS_TOKEN=... VERCEL_TOKEN=... PROJECT_REF=... SUPABASE_URL=... \
+  PUBLISHABLE_KEY=... bash setup.sh
 ```
 
-The three values come from Project Settings → API keys in your Supabase
-project (any left out are prompted for). The script logs in to Supabase,
-links the project, sets a random `COVERAGE_SECRET`, deploys the
-`coverage` and `calendar-feed` functions, writes
-`app/supabase-config.js`, prints a filled-in copy of
-`coverage-schedule.sql` for you to run in the SQL editor, deploys a copy
-of `app/` to Vercel (see Vercel notes below), and prints your production
-URL plus a 3 item checklist.
+The script links the project, sets a random `COVERAGE_SECRET`, deploys
+the `coverage` and `calendar-feed` functions, writes
+`app/supabase-config.js`, runs the coverage schedule SQL through
+Supabase's management API, deploys a copy of `app/` to Vercel (see
+Vercel notes below), and prints your public URL.
+
+Open the URL, sign in with the user you created in step 4 above, and
+enter your contact email in the Company coverage card on the Home tab
+(right rail). The SEC requires it in requests.
 
 ### Path B: a regular chat
 
@@ -73,23 +99,40 @@ finish:
 2. `npx supabase login`
 3. `npx supabase link --project-ref YOUR_PROJECT_REF`
 4. `PROJECT_REF=... SUPABASE_URL=... PUBLISHABLE_KEY=... bash setup.sh`
-   — the three values come from Project Settings → API keys, and the ref
-   is the short code in your project's URL.
-5. Run the schedule SQL file the script names, in the Supabase SQL
-   editor.
+   — the Project URL is under Project Settings → Data API, the
+   publishable key under Project Settings → API keys, and the ref is the
+   short code in your project's URL.
+5. If the script could not run the schedule SQL itself, it prints the
+   name of a SQL file. Open it, copy everything, paste it into the
+   Supabase SQL editor, and run it. (The script runs it itself only when
+   `SUPABASE_ACCESS_TOKEN` is set, which Path B doesn't use.)
 6. Open the URL the script printed. See Vercel notes below if it asks
    you to log in.
-7. Sign in with the user you created in step 4 above.
+7. Sign in with the user you created in the Supabase dashboard.
+8. Loading people or companies from a regular chat: ask your AI to turn
+   your file into SQL insert statements for Teplus (it can read
+   `supabase/schema.sql` for the columns), then paste the result into the
+   SQL editor and run it.
 
 ### Vercel notes
 
-- Vercel turns on Deployment Protection by default on the Hobby plan, so
-  your URL may redirect to a Vercel login. Turn it off at Settings →
-  Deployment Protection → Vercel Authentication.
+- Deployment Protection is on by default on the Hobby plan, but
+  `setup.sh` now prints the project's public alias
+  (`https://<project>.vercel.app`), which works without any settings
+  change. Only the per-deployment URLs (the long ones with a hash) sit
+  behind Vercel Authentication. If your URL still redirects to a Vercel
+  login, turn it off at Settings → Deployment Protection → Vercel
+  Authentication.
 - Vercel also blocks deploys made from inside a git folder whose last
   commit email isn't the deploying account's. `setup.sh` avoids this by
   deploying from a copy outside the repo; do the same if you deploy by
   hand.
+- Vercel names the project after the folder it deploys from. `setup.sh`
+  deploys from a copy called `teplus-app`, so the project is
+  `teplus-app` and the URL is `https://teplus-app-<something>.vercel.app`
+  or `https://teplus-app.vercel.app`, whichever Vercel has free. Set
+  `VERCEL_PROJECT_NAME=yourname` before `bash setup.sh` to choose a
+  different name.
 
 ## Your people
 
@@ -101,7 +144,7 @@ network.
 Either way, the setup guide has three prompts for your AI: cutting the
 list down, scoring each person key, standard, or annual and each firm A,
 B, or C, and spreading out your check-in cadences so they don't all land
-on the same day.
+on the same day. The guide lives at `docs/SETUP-GUIDE.md`.
 
 Time: 30 to 60 minutes of your decisions.
 
@@ -114,6 +157,12 @@ The Companies tab shows updates on the companies you cover, the people you
 know there, and a reach out flag with a plain reason why.
 
 ### Turn on coverage
+
+`setup.sh` already did the first three steps below. Only the fourth is
+left: your contact email, in the Company coverage card on the Home tab
+(right rail).
+
+By hand, if you skipped `setup.sh`:
 
 1. `supabase secrets set COVERAGE_SECRET=<a random string>`
 2. `supabase functions deploy coverage --no-verify-jwt`

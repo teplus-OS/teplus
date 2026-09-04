@@ -12,6 +12,19 @@
 #
 # Any of the three values may instead be typed in when prompted.
 #
+# Two more env vars are optional, but let this script run with no browser
+# login at all (useful for an assistant that cannot open a browser):
+#   SUPABASE_ACCESS_TOKEN  a token from supabase.com/dashboard/account/tokens
+#   VERCEL_TOKEN           a token from vercel.com/account/tokens
+# When SUPABASE_ACCESS_TOKEN is set, the Supabase CLI uses it instead of an
+# interactive login, and this script also uses it to run the coverage
+# schedule SQL for you via the Supabase management API. When VERCEL_TOKEN is
+# set, every `vercel` command uses it instead of an interactive login.
+# Neither token is ever printed by this script. Delete both after setup.
+#
+# VERCEL_PROJECT_NAME (optional, default teplus-app) names the Vercel
+# project this script deploys to.
+#
 # macOS ships zsh as the default shell; this script is bash, so it is always
 # invoked as `bash setup.sh`, never `./setup.sh` or `sh setup.sh`.
 
@@ -52,8 +65,15 @@ info "npx found: $(command -v npx)"
 # ── 1. collect required values ──────────────────────────────────────────
 
 step "Collecting your Supabase project details"
-info "These come from your Supabase project's dashboard (Project Settings -> API,"
-info "and the project ref shown in the project URL / General settings)."
+info "These come from your Supabase project's dashboard: the Project URL is under"
+info "Project Settings -> Data API, the publishable key under Project Settings ->"
+info "API keys, and the project ref is the short code in your project's URL."
+if [ -n "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+  info "SUPABASE_ACCESS_TOKEN is set: the Supabase CLI will use it instead of a browser login."
+fi
+if [ -n "${VERCEL_TOKEN:-}" ]; then
+  info "VERCEL_TOKEN is set: the Vercel CLI will use it instead of a browser login."
+fi
 
 if [ -z "${PROJECT_REF:-}" ]; then
   printf 'Supabase project ref (e.g. abcdefghijklmnop): '
@@ -81,7 +101,9 @@ info "  PUBLISHABLE_KEY = ${PUBLISHABLE_KEY:0:12}... (truncated)"
 # ── 2. supabase login / link ────────────────────────────────────────────
 
 step "Checking Supabase CLI login"
-if npx supabase projects list >/dev/null 2>&1; then
+if [ -n "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+  info "SUPABASE_ACCESS_TOKEN is set, the Supabase CLI will use it, skipping login."
+elif npx supabase projects list >/dev/null 2>&1; then
   info "Already logged in to the Supabase CLI — skipping login."
 else
   info "Not logged in yet. Opening 'npx supabase login'..."
@@ -130,31 +152,85 @@ sed \
   supabase/coverage-schedule.sql > "$FILLED_SQL" \
   || fail "filling coverage-schedule.sql"
 info "Wrote the filled schedule SQL to: $FILLED_SQL"
-info "Run this file in the Supabase SQL editor (this script does not run SQL itself)."
+
+SQL_RAN_AUTOMATICALLY=0
+if [ -n "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+  step "Running the schedule SQL via the Supabase management API"
+  SQL_RESULT_FILE="$(mktemp -t teplus-sql-result.XXXXXX.txt)" || fail "mktemp"
+  if PROJECT_REF="$PROJECT_REF" SQL_FILE="$FILLED_SQL" SUPABASE_ACCESS_TOKEN="$SUPABASE_ACCESS_TOKEN" \
+    node -e '
+      const fs = require("fs");
+      const projectRef = process.env.PROJECT_REF;
+      const token = process.env.SUPABASE_ACCESS_TOKEN;
+      const sql = fs.readFileSync(process.env.SQL_FILE, "utf8");
+      fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "User-Agent": "teplus-setup",
+        },
+        body: JSON.stringify({ query: sql }),
+      }).then(async (res) => {
+        const body = await res.text();
+        if (res.ok) {
+          process.exit(0);
+        }
+        process.stderr.write(body + "\n");
+        process.exit(1);
+      }).catch((err) => {
+        process.stderr.write(String(err) + "\n");
+        process.exit(1);
+      });
+    ' 2>"$SQL_RESULT_FILE"; then
+    info "Schedule SQL ran automatically. Nothing to do in the SQL editor."
+    SQL_RAN_AUTOMATICALLY=1
+  else
+    info "Could not run the schedule SQL automatically. Response:"
+    sed 's/^/    /' "$SQL_RESULT_FILE" >&2
+    info "Run this file in the Supabase SQL editor instead: $FILLED_SQL"
+  fi
+else
+  info "Run this file in the Supabase SQL editor (SUPABASE_ACCESS_TOKEN not set, so this script cannot run SQL itself)."
+fi
 
 # ── 6. deploy the app to Vercel, from a copy outside the git repo ──────
 
-step "Deploying app/ to Vercel (from a temporary copy outside this git repo)"
-rm -rf /tmp/teplus-app
-run "copy app for deploy" cp -R app /tmp/teplus-app
+VERCEL_PROJECT_NAME="${VERCEL_PROJECT_NAME:-teplus-app}"
+VERCEL_DEPLOY_DIR="/tmp/$VERCEL_PROJECT_NAME"
+
+step "Deploying app/ to Vercel as '$VERCEL_PROJECT_NAME' (from a temporary copy outside this git repo)"
+rm -rf "$VERCEL_DEPLOY_DIR"
+run "copy app for deploy" cp -R app "$VERCEL_DEPLOY_DIR"
+
+if [ -n "${VERCEL_TOKEN:-}" ]; then
+  info "VERCEL_TOKEN is set, skipping browser login."
+fi
 
 VERCEL_LOG="$(mktemp -t teplus-vercel.XXXXXX.log)" || fail "mktemp"
 (
-  cd /tmp/teplus-app || exit 1
-  if ! npx vercel whoami >/dev/null 2>&1; then
-    npx vercel login || exit 1
+  cd "$VERCEL_DEPLOY_DIR" || exit 1
+  if [ -z "${VERCEL_TOKEN:-}" ]; then
+    if ! npx vercel whoami >/dev/null 2>&1; then
+      npx vercel login || exit 1
+    fi
   fi
-  npx vercel --prod --yes
+  # macOS ships bash 3.2, so no arrays here: the ${VAR:+...} form expands to
+  # nothing when VERCEL_TOKEN is unset and to the two words otherwise.
+  npx vercel ${VERCEL_TOKEN:+--token "$VERCEL_TOKEN"} --prod --yes
 ) | tee "$VERCEL_LOG"
 VERCEL_STATUS=${PIPESTATUS[0]:-1}
 if [ "$VERCEL_STATUS" -ne 0 ]; then
   fail "vercel deploy"
 fi
 
-DEPLOY_URL="$(grep -Eo 'https://[a-zA-Z0-9.-]+\.vercel\.app' "$VERCEL_LOG" | tail -n 1)"
+DEPLOY_URL="$(grep -E 'Aliased:' "$VERCEL_LOG" | grep -Eo 'https://[a-zA-Z0-9.-]+\.vercel\.app' | tail -n 1)"
+if [ -z "$DEPLOY_URL" ]; then
+  DEPLOY_URL="$(grep -E 'Production:' "$VERCEL_LOG" | grep -Eo 'https://[a-zA-Z0-9.-]+\.vercel\.app' | tail -n 1)"
+fi
 if [ -z "$DEPLOY_URL" ]; then
   info "Could not automatically find the production URL in Vercel's output above."
-  info "Look for the line Vercel printed starting with 'Production:' and use that URL."
+  info "Look for the line Vercel printed starting with 'Aliased:' or 'Production:' and use that URL."
 else
   info "Production URL: $DEPLOY_URL"
 fi
@@ -162,18 +238,30 @@ fi
 # ── 7. final checklist ───────────────────────────────────────────────────
 
 step "Setup finished. Final checklist:"
-cat <<EOF
 
-1) Open your URL${DEPLOY_URL:+ ($DEPLOY_URL)}. If it redirects to a Vercel
-   login page instead of Teplus, go to the Vercel dashboard for this
-   project -> Settings -> Deployment Protection, and turn off
-   "Vercel Authentication".
+CHECKLIST_ITEM=1
+{
+echo
+echo "$CHECKLIST_ITEM) Open your URL${DEPLOY_URL:+ ($DEPLOY_URL)}. If it shows a Vercel login"
+echo "   page instead of Teplus, go to the Vercel dashboard for this project"
+echo "   -> Settings -> Deployment Protection, and turn off \"Vercel Authentication\"."
+CHECKLIST_ITEM=$((CHECKLIST_ITEM + 1))
+echo
 
-2) Run the schedule SQL in the Supabase SQL editor:
-   $FILLED_SQL
+if [ "$SQL_RAN_AUTOMATICALLY" -eq 0 ]; then
+  echo "$CHECKLIST_ITEM) Run the schedule SQL in the Supabase SQL editor:"
+  echo "   $FILLED_SQL"
+  CHECKLIST_ITEM=$((CHECKLIST_ITEM + 1))
+  echo
+fi
 
-3) Sign in with the auth user you created, then set your contact email in
-   the Company coverage card in Settings (required by the SEC's EDGAR
-   fair-access policy for the coverage collector to run).
+echo "$CHECKLIST_ITEM) Sign in with the auth user you created, then set your contact email"
+echo "   in the Company coverage card on the Home tab (right rail). The SEC's"
+echo "   EDGAR fair-access policy requires it for the coverage collector to run."
+CHECKLIST_ITEM=$((CHECKLIST_ITEM + 1))
+echo
 
-EOF
+echo "$CHECKLIST_ITEM) Delete the two \"teplus-setup\" tokens you made for this setup:"
+echo "   supabase.com/dashboard/account/tokens and vercel.com/account/tokens."
+echo
+}

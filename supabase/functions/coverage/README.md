@@ -36,8 +36,8 @@ inside your project, not by a signed-in browser, so it has no user JWT to
 check. The `x-coverage-secret` header is the auth instead.
 
 Then run `supabase/coverage-schedule.sql` in the SQL editor (fill in the two
-placeholders) to put it on a 15-minute schedule, and turn on "Company
-coverage" in Settings with a contact email.
+placeholders) to put it on a 15-minute schedule, and turn on company coverage
+in the Company coverage card on the Home tab, with a contact email.
 
 ## Run it once by hand
 
@@ -56,6 +56,9 @@ A healthy response looks like `{"companies":3,"events":5,"ms":8421,"errors":[]}`
 A non-empty `errors` array is not necessarily a failure — a single source
 failing for one company (a site down, a rate limit) is logged there and
 still lets the rest of the batch finish.
+
+Each batch of 8 takes 60 to 80 seconds. If a run's `ms` gets close to the
+140 second wall clock, lower `app_settings.coverage_batch`.
 
 ## Reading `coverage_runs`
 
